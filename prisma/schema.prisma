@@ -1,0 +1,159 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Main Models
+model User {
+  id          String    @id @default(cuid())
+  name        String
+  email       String    @unique
+  bio         String?
+  location    String?
+  dateOfBirth DateTime?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  password    String
+  image       String?
+  username    String?   @unique
+  isVerified  Boolean   @default(false)
+
+  // Relations
+  communities    UserCommunity[]
+  events         UserEvent[]
+  interests      UserInterest[]
+  matchesAsUser1 UserMatch[]     @relation("User1Matches")
+  matchesAsUser2 UserMatch[]     @relation("User2Matches")
+
+  @@map("users")
+}
+
+model Community {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  users  UserCommunity[]
+  events Event[]
+
+  @@map("communities")
+}
+
+model Place {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  type      String // bar, gym, club, etc.
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  events Event[]
+  promos Promo[]
+
+  @@map("places")
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  date        DateTime
+  placeId     String   @map("place_id")
+  communityId String   @map("community_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  banner      String?
+
+  // Relations
+  place     Place       @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  community Community   @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  users     UserEvent[]
+
+  @@map("events")
+}
+
+model Promo {
+  id           String   @id @default(cuid())
+  placeId      String   @map("place_id")
+  title        String
+  discountCode String   @map("discount_code")
+  validUntil   DateTime @map("valid_until")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@map("promos")
+}
+
+model Interest {
+  id   String @id @default(cuid())
+  name String @unique
+
+  // Relations
+  users UserInterest[]
+
+  @@map("interests")
+}
+
+// Junction Tables (Many-to-Many relationships)
+model UserCommunity {
+  userId      String @map("user_id")
+  communityId String @map("community_id")
+
+  // Relations
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@id([userId, communityId])
+  @@map("user_communities")
+}
+
+model UserEvent {
+  userId  String @map("user_id")
+  eventId String @map("event_id")
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@id([userId, eventId])
+  @@map("user_events")
+}
+
+model UserInterest {
+  userId     String @map("user_id")
+  interestId String @map("interest_id")
+
+  // Relations
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interest Interest @relation(fields: [interestId], references: [id], onDelete: Cascade)
+
+  @@id([userId, interestId])
+  @@map("user_interests")
+}
+
+model UserMatch {
+  user1Id    String   @map("user1_id")
+  user2Id    String   @map("user2_id")
+  matchScore Float    @map("match_score")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user1 User @relation("User1Matches", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2 User @relation("User2Matches", fields: [user2Id], references: [id], onDelete: Cascade)
+
+  @@id([user1Id, user2Id])
+  @@map("user_matches")
+}
