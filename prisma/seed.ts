@@ -1,17 +1,227 @@
 import bcrypt from 'bcrypt'
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, JoinReason, VibeType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// Default password untuk semua test users
+// Default password for all test users
 const DEFAULT_PASSWORD = 'Password123!'
 const saltRounds = 10
 
-async function main() {
-  console.log('🌱 Starting seed...')
+// ============================================
+// LOCATION DATA
+// ============================================
 
-  // Clean existing data (in correct order to avoid FK constraints)
+// Moscow area locations
+const MOSCOW_LOCATIONS = [
+  { city: 'Moscow', district: 'Tverskoy', province: 'Moscow Oblast', country: 'Russia', lat: 55.7558, lng: 37.6173 },
+  { city: 'Moscow', district: 'Arbat', province: 'Moscow Oblast', country: 'Russia', lat: 55.7520, lng: 37.5930 },
+  { city: 'Moscow', district: 'Zamoskvorechye', province: 'Moscow Oblast', country: 'Russia', lat: 55.7400, lng: 37.6280 },
+  { city: 'Moscow', district: 'Khamovniki', province: 'Moscow Oblast', country: 'Russia', lat: 55.7280, lng: 37.5700 },
+  { city: 'Moscow', district: 'Meshchansky', province: 'Moscow Oblast', country: 'Russia', lat: 55.7780, lng: 37.6350 },
+  { city: 'Saint Petersburg', district: 'Admiralteysky', province: 'Leningrad Oblast', country: 'Russia', lat: 59.9311, lng: 30.3609 },
+  { city: 'Saint Petersburg', district: 'Vasileostrovsky', province: 'Leningrad Oblast', country: 'Russia', lat: 59.9420, lng: 30.2730 },
+  { city: 'Moscow', district: 'Presnensky', province: 'Moscow Oblast', country: 'Russia', lat: 55.7600, lng: 37.5800 },
+];
+
+// Jakarta area locations
+const JAKARTA_LOCATIONS = [
+  { city: 'Jakarta Selatan', district: 'Kebayoran Baru', province: 'DKI Jakarta', country: 'Indonesia', lat: -6.2615, lng: 106.8106 },
+  { city: 'Jakarta Pusat', district: 'Menteng', province: 'DKI Jakarta', country: 'Indonesia', lat: -6.1862, lng: 106.8341 },
+  { city: 'Jakarta Utara', district: 'Kelapa Gading', province: 'DKI Jakarta', country: 'Indonesia', lat: -6.1383, lng: 106.8633 },
+  { city: 'Jakarta Barat', district: 'Grogol Petamburan', province: 'DKI Jakarta', country: 'Indonesia', lat: -6.1668, lng: 106.7599 },
+  { city: 'Jakarta Timur', district: 'Cakung', province: 'DKI Jakarta', country: 'Indonesia', lat: -6.2250, lng: 106.9002 },
+  { city: 'Tangerang Selatan', district: 'Pondok Indah', province: 'Banten', country: 'Indonesia', lat: -6.2880, lng: 106.7172 },
+  { city: 'Bekasi', district: 'Bekasi Barat', province: 'Jawa Barat', country: 'Indonesia', lat: -6.2383, lng: 106.9756 },
+  { city: 'Depok', district: 'Pancoran Mas', province: 'Jawa Barat', country: 'Indonesia', lat: -6.4025, lng: 106.7942 },
+];
+
+// New York area locations
+const NEWYORK_LOCATIONS = [
+  { city: 'New York', district: 'Manhattan', province: 'New York', country: 'United States', lat: 40.7831, lng: -73.9712 },
+  { city: 'New York', district: 'Brooklyn', province: 'New York', country: 'United States', lat: 40.6782, lng: -73.9442 },
+  { city: 'New York', district: 'Queens', province: 'New York', country: 'United States', lat: 40.7282, lng: -73.7949 },
+  { city: 'New York', district: 'Bronx', province: 'New York', country: 'United States', lat: 40.8448, lng: -73.8648 },
+  { city: 'Jersey City', district: 'Downtown', province: 'New Jersey', country: 'United States', lat: 40.7178, lng: -74.0431 },
+  { city: 'Hoboken', district: 'Uptown', province: 'New Jersey', country: 'United States', lat: 40.7439, lng: -74.0324 },
+  { city: 'New York', district: 'Staten Island', province: 'New York', country: 'United States', lat: 40.5795, lng: -74.1502 },
+  { city: 'Yonkers', district: 'Downtown', province: 'New York', country: 'United States', lat: 40.9312, lng: -73.8987 },
+];
+
+// Combine all locations
+const ALL_LOCATIONS = [
+  ...MOSCOW_LOCATIONS,
+  ...JAKARTA_LOCATIONS,
+  ...NEWYORK_LOCATIONS
+];
+
+// ============================================
+// HANGOUT PLACES DATA
+// ============================================
+
+const MOSCOW_HANGOUT_PLACES = [
+  { name: 'Starbucks Tverskaya', type: 'cafe', lat: 55.7615, lng: 37.6082, address: 'Tverskaya St, 22', city: 'Moscow' },
+  { name: 'Gorky Park', type: 'park', lat: 55.7280, lng: 37.6010, address: 'Krymsky Val, 9', city: 'Moscow' },
+  { name: 'World Gym Moscow', type: 'gym', lat: 55.7558, lng: 37.6230, address: 'Novy Arbat, 15', city: 'Moscow' },
+  { name: 'Bolshoi Theatre', type: 'art_gallery', lat: 55.7601, lng: 37.6186, address: 'Theatre Square, 1', city: 'Moscow' },
+  { name: 'Sixty Bar', type: 'bar', lat: 55.7539, lng: 37.5850, address: 'Presnenskaya Emb, 12', city: 'Moscow' },
+];
+
+const JAKARTA_HANGOUT_PLACES = [
+  { name: 'Starbucks Senopati', type: 'cafe', lat: -6.2425, lng: 106.7983, address: 'Jl. Senopati No. 10', city: 'Jakarta Selatan' },
+  { name: 'Central Park Mall', type: 'mall', lat: -6.1775, lng: 106.7926, address: 'Jl. Letjen S. Parman', city: 'Jakarta Barat' },
+  { name: 'GBK Sports Complex', type: 'sports_venue', lat: -6.2188, lng: 106.8019, address: 'Jl. Pintu Satu Senayan', city: 'Jakarta Pusat' },
+  { name: 'Ancol Beach', type: 'beach', lat: -6.1225, lng: 106.8424, address: 'Jl. Lodan Timur No.7', city: 'Jakarta Utara' },
+  { name: 'Skye Bar', type: 'bar', lat: -6.2088, lng: 106.8456, address: 'Jl. MH Thamrin No.1', city: 'Jakarta Pusat' },
+];
+
+const NEWYORK_HANGOUT_PLACES = [
+  { name: 'Starbucks Times Square', type: 'cafe', lat: 40.7580, lng: -73.9855, address: '1585 Broadway', city: 'New York' },
+  { name: 'Central Park', type: 'park', lat: 40.7829, lng: -73.9654, address: 'Central Park West', city: 'New York' },
+  { name: 'Equinox Gym', type: 'gym', lat: 40.7614, lng: -73.9776, address: '897 Broadway', city: 'New York' },
+  { name: 'MoMA', type: 'museum', lat: 40.7614, lng: -73.9776, address: '11 W 53rd St', city: 'New York' },
+  { name: 'The Rooftop Bar', type: 'bar', lat: 40.7505, lng: -73.9934, address: '2 6th Ave', city: 'New York' },
+];
+
+const ALL_HANGOUT_PLACES = [
+  ...MOSCOW_HANGOUT_PLACES,
+  ...JAKARTA_HANGOUT_PLACES,
+  ...NEWYORK_HANGOUT_PLACES
+];
+
+// ============================================
+// MOOD & JOIN REASONS
+// ============================================
+
+// const MOOD_TYPES = [
+//   'energetic', 'calm', 'adventurous', 'chill',
+//   'social', 'introspective', 'creative', 'focused'
+// ] as const;
+
+const ALL_JOIN_REASONS = [
+  JoinReason.MAKE_FRIENDS,
+  JoinReason.FIND_ACTIVITY_PARTNERS,
+  JoinReason.EXPLORE_CITY,
+  JoinReason.TRY_NEW_EXPERIENCES,
+  JoinReason.PROFESSIONAL_NETWORKING,
+  JoinReason.DATING_RELATIONSHIPS,
+  JoinReason.NEW_TO_AREA,
+  JoinReason.EXPAND_SOCIAL_CIRCLE,
+  JoinReason.FIND_HOBBY_COMMUNITY,
+  JoinReason.ATTEND_EVENTS
+];
+
+const ALL_VIBES = [
+  VibeType.cozy,
+  VibeType.active,
+  VibeType.adventurous,
+  VibeType.energetic,
+];
+
+// Helper to get random join reasons (1-3)
+function getRandomJoinReasons(): JoinReason[] {
+  const count = Math.floor(Math.random() * 3) + 1; // 1-3
+  const shuffled = [...ALL_JOIN_REASONS].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, count);
+}
+
+// Helper to get random join reasons (1-3)
+function getRandomJVibes(): VibeType[] {
+  const count = Math.floor(Math.random() * 3) + 1; // 1-3
+  const shuffled = [...ALL_VIBES].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, count);
+}
+
+// ============================================
+// INTERESTS WITH CATEGORIES
+// ============================================
+
+const INTERESTS_DATA = [
+  // SPORTS (5)
+  { name: 'Football', slug: 'football', category: 'sports', icon: '⚽' },
+  { name: 'Basketball', slug: 'basketball', category: 'sports', icon: '🏀' },
+  { name: 'Tennis', slug: 'tennis', category: 'sports', icon: '🎾' },
+  { name: 'Yoga', slug: 'yoga', category: 'sports', icon: '🧘' },
+  { name: 'Fitness', slug: 'fitness', category: 'sports', icon: '💪' },
+
+  // ARTS (5)
+  { name: 'Painting', slug: 'painting', category: 'arts', icon: '🎨' },
+  { name: 'Photography', slug: 'photography', category: 'arts', icon: '📷' },
+  { name: 'Drawing', slug: 'drawing', category: 'arts', icon: '✏️' },
+  { name: 'Sculpture', slug: 'sculpture', category: 'arts', icon: '🗿' },
+  { name: 'Design', slug: 'design', category: 'arts', icon: '🎭' },
+
+  // MUSIC (4)
+  { name: 'Playing Guitar', slug: 'guitar', category: 'music', icon: '🎸' },
+  { name: 'Piano', slug: 'piano', category: 'music', icon: '🎹' },
+  { name: 'Singing', slug: 'singing', category: 'music', icon: '🎤' },
+  { name: 'DJ', slug: 'dj', category: 'music', icon: '🎧' },
+
+  // FOOD (4)
+  { name: 'Cooking', slug: 'cooking', category: 'food', icon: '👨‍🍳' },
+  { name: 'Baking', slug: 'baking', category: 'food', icon: '🧁' },
+  { name: 'Wine Tasting', slug: 'wine', category: 'food', icon: '🍷' },
+  { name: 'Coffee', slug: 'coffee', category: 'food', icon: '☕' },
+
+  // TECH (5)
+  { name: 'Programming', slug: 'programming', category: 'tech', icon: '💻' },
+  { name: 'AI & Machine Learning', slug: 'ai', category: 'tech', icon: '🤖' },
+  { name: 'Web Development', slug: 'webdev', category: 'tech', icon: '🌐' },
+  { name: 'Mobile Apps', slug: 'mobile', category: 'tech', icon: '📱' },
+  { name: 'Blockchain', slug: 'blockchain', category: 'tech', icon: '⛓️' },
+
+  // GAMING (3)
+  { name: 'Video Games', slug: 'videogames', category: 'gaming', icon: '🎮' },
+  { name: 'Board Games', slug: 'boardgames', category: 'gaming', icon: '🎲' },
+  { name: 'Chess', slug: 'chess', category: 'gaming', icon: '♟️' },
+
+  // FITNESS (3)
+  { name: 'Running', slug: 'running', category: 'fitness', icon: '🏃' },
+  { name: 'Gym', slug: 'gym', category: 'fitness', icon: '🏋️' },
+  { name: 'Swimming', slug: 'swimming', category: 'fitness', icon: '🏊' },
+
+  // READING (3)
+  { name: 'Fiction', slug: 'fiction', category: 'reading', icon: '📚' },
+  { name: 'Non-Fiction', slug: 'nonfiction', category: 'reading', icon: '📖' },
+  { name: 'Poetry', slug: 'poetry', category: 'reading', icon: '📝' },
+
+  // TRAVEL (4)
+  { name: 'Adventure Travel', slug: 'adventure', category: 'travel', icon: '🏕️' },
+  { name: 'City Tours', slug: 'city-tours', category: 'travel', icon: '🏙️' },
+  { name: 'Beach Vacations', slug: 'beach', category: 'travel', icon: '🏖️' },
+  { name: 'Hiking', slug: 'hiking', category: 'travel', icon: '⛰️' },
+
+  // WELLNESS (3)
+  { name: 'Meditation', slug: 'meditation', category: 'wellness', icon: '🧘‍♀️' },
+  { name: 'Mindfulness', slug: 'mindfulness', category: 'wellness', icon: '🌸' },
+  { name: 'Spa & Massage', slug: 'spa', category: 'wellness', icon: '💆' },
+
+  // SOCIAL (3)
+  { name: 'Networking', slug: 'networking', category: 'social', icon: '🤝' },
+  { name: 'Parties', slug: 'parties', category: 'social', icon: '🎉' },
+  { name: 'Volunteering', slug: 'volunteering', category: 'social', icon: '🙌' },
+
+  // LEARNING (3)
+  { name: 'Languages', slug: 'languages', category: 'learning', icon: '🗣️' },
+  { name: 'Online Courses', slug: 'courses', category: 'learning', icon: '🎓' },
+  { name: 'Podcasts', slug: 'podcasts', category: 'learning', icon: '🎙️' },
+
+  // ENTERTAINMENT (3)
+  { name: 'Movies', slug: 'movies', category: 'entertainment', icon: '🎬' },
+  { name: 'Theater', slug: 'theater', category: 'entertainment', icon: '🎭' },
+  { name: 'Concerts', slug: 'concerts', category: 'entertainment', icon: '🎵' },
+];
+
+async function main() {
+  console.log('🌱 Starting seed...\n')
+
+  // Clean existing data
   console.log('🧹 Cleaning existing data...')
+  await prisma.eventRecommendation.deleteMany()
+  await prisma.placeRecommendation.deleteMany()
+  await prisma.match.deleteMany()
+  // await prisma.dailyMood.deleteMany()
+  await prisma.userHangoutPlace.deleteMany() // 🆕
+  await prisma.userCoordinates.deleteMany()
   await prisma.userMatch.deleteMany()
   await prisma.userInterest.deleteMany()
   await prisma.userEvent.deleteMany()
@@ -22,203 +232,235 @@ async function main() {
   await prisma.place.deleteMany()
   await prisma.community.deleteMany()
   await prisma.user.deleteMany()
+  console.log('✅ Cleaned existing data\n')
 
   // Hash password
   console.log('🔐 Hashing default password...')
   const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, saltRounds)
-  console.log('✅ Password hashed')
+  console.log('✅ Password hashed\n')
 
-  // Create Users
+  // ============================================
+  // CREATE USERS
+  // ============================================
   console.log('👥 Creating users...')
 
   const userData = [
     {
-      name: 'John Doe',
-      email: 'john@example.com',
-      username: 'johndoe',
+      name: 'Dmitry Ivanov',
+      email: 'dmitry@example.com',
+      username: 'dmitry_moscow',
       password: hashedPassword,
-      bio: 'Tech enthusiast and fitness lover',
-      location: 'New York, USA',
+      bio: 'Tech entrepreneur from Moscow',
       image: 'https://i.pravatar.cc/150?img=1',
       isVerified: true,
       dateOfBirth: new Date('1990-01-15'),
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
+      vibes: getRandomJVibes()
     },
     {
-      name: 'Jane Smith',
-      email: 'jane@example.com',
-      username: 'janesmith',
+      name: 'Anna Petrova',
+      email: 'anna@example.com',
+      username: 'anna_spb',
       password: hashedPassword,
-      bio: 'Music producer and community organizer',
-      location: 'Los Angeles, USA',
+      bio: 'Artist and photographer',
       image: 'https://i.pravatar.cc/150?img=2',
       isVerified: true,
-      dateOfBirth: new Date('1990-01-15'),
+      dateOfBirth: new Date('1992-03-20'),
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
+      vibes: getRandomJVibes()
     },
     {
-      name: 'Admin User',
-      email: 'admin@example.com',
-      username: 'admin',
+      name: 'John Smith',
+      email: 'john@example.com',
+      username: 'john_nyc',
       password: hashedPassword,
-      bio: 'Platform administrator',
-      location: 'San Francisco, USA',
+      bio: 'Software engineer and fitness enthusiast',
       image: 'https://i.pravatar.cc/150?img=3',
+      isVerified: true,
+      dateOfBirth: new Date('1988-07-10'),
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
+      vibes: getRandomJVibes()
     },
     {
-      name: 'Alice Johnson',
-      email: 'alice@example.com',
-      username: 'alicejohnson',
+      name: 'Sarah Williams',
+      email: 'sarah@example.com',
+      username: 'sarah_brooklyn',
       password: hashedPassword,
-      bio: 'Yoga instructor and wellness coach',
-      location: 'Miami, USA',
+      bio: 'Marketing consultant and yoga teacher',
       image: 'https://i.pravatar.cc/150?img=4',
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
+      vibes: getRandomJVibes()
     },
     {
-      name: 'Bob Williams',
-      email: 'bob@example.com',
-      username: 'bobwilliams',
+      name: 'Budi Santoso',
+      email: 'budi@example.com',
+      username: 'budi_jakarta',
       password: hashedPassword,
-      bio: 'Professional photographer',
-      location: 'Seattle, USA',
+      bio: 'Entrepreneur and food lover',
       image: 'https://i.pravatar.cc/150?img=5',
+      isVerified: true,
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
+      vibes: getRandomJVibes()
     },
     {
-      name: 'Carol Martinez',
-      email: 'carol@example.com',
-      username: 'carolmartinez',
+      name: 'Siti Nurhaliza',
+      email: 'siti@example.com',
+      username: 'siti_jkt',
       password: hashedPassword,
-      bio: 'Chef and food blogger',
-      location: 'Austin, USA',
+      bio: 'Designer and creative director',
       image: 'https://i.pravatar.cc/150?img=6',
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
     },
     {
-      name: 'David Brown',
-      email: 'david@example.com',
-      username: 'davidbrown',
+      name: 'Vladimir Sokolov',
+      email: 'vladimir@example.com',
+      username: 'vladimir_msk',
       password: hashedPassword,
-      bio: 'Software engineer and gamer',
-      location: 'Boston, USA',
+      bio: 'Music producer and DJ',
       image: 'https://i.pravatar.cc/150?img=7',
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
     },
     {
-      name: 'Emma Davis',
-      email: 'emma@example.com',
-      username: 'emmadavis',
+      name: 'Emily Chen',
+      email: 'emily@example.com',
+      username: 'emily_manhattan',
       password: hashedPassword,
-      bio: 'Travel blogger and adventure seeker',
-      location: 'Denver, USA',
+      bio: 'Investment banker and marathon runner',
       image: 'https://i.pravatar.cc/150?img=8',
+      isVerified: true,
+      dateOfBirth: new Date('1991-11-05'),
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
     },
     {
-      name: 'Frank Miller',
-      email: 'frank@example.com',
-      username: 'frankmiller',
+      name: 'Rina Wijaya',
+      email: 'rina@example.com',
+      username: 'rina_jakarta',
       password: hashedPassword,
-      bio: 'Artist and graphic designer',
-      location: 'Portland, USA',
+      bio: 'Travel blogger and content creator',
       image: 'https://i.pravatar.cc/150?img=9',
-      isVerified: true,
-      dateOfBirth: new Date('1990-01-15'),
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
     },
     {
-      name: 'Grace Wilson',
-      email: 'grace@example.com',
-      username: 'gracewilson',
+      name: 'Michael Brown',
+      email: 'michael@example.com',
+      username: 'michael_queens',
       password: hashedPassword,
-      bio: 'Personal trainer and nutrition expert',
-      location: 'Chicago, USA',
+      bio: 'Architect and urban planner',
       image: 'https://i.pravatar.cc/150?img=10',
-      isVerified: true,
-      dateOfBirth: new Date('1990-01-15'),
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
     },
     {
-      name: 'Henry Moore',
-      email: 'henry@example.com',
-      username: 'henrymoore',
-      password: hashedPassword,
-      bio: 'Entrepreneur and startup advisor',
-      location: 'San Diego, USA',
-      image: 'https://i.pravatar.cc/150?img=11',
-    },
-    {
-      name: 'Ivy Taylor',
-      email: 'ivy@example.com',
-      username: 'ivytaylor',
-      password: hashedPassword,
-      bio: 'Book lover and literature teacher',
-      location: 'Philadelphia, USA',
-      image: 'https://i.pravatar.cc/150?img=12',
-    },
-    {
-      name: 'Jack Anderson',
-      email: 'jack@example.com',
-      username: 'jackanderson',
-      password: hashedPassword,
-      bio: 'DJ and music producer',
-      location: 'Las Vegas, USA',
-      image: 'https://i.pravatar.cc/150?img=13',
-    },
-    {
-      name: 'Karen Thomas',
-      email: 'karen@example.com',
-      username: 'karenthomas',
-      password: hashedPassword,
-      bio: 'Meditation teacher and mindfulness coach',
-      location: 'Santa Fe, USA',
-      image: 'https://i.pravatar.cc/150?img=14',
-    },
-    {
-      name: 'Leo Jackson',
-      email: 'leo@example.com',
-      username: 'leojackson',
-      password: hashedPassword,
-      bio: 'Sports enthusiast and coach',
-      location: 'Dallas, USA',
-      image: 'https://i.pravatar.cc/150?img=15',
-    },
-    {
-      name: 'Mia White',
-      email: 'mia@example.com',
-      username: 'miawhite',
+      name: 'Olga Kuznetsova',
+      email: 'olga@example.com',
+      username: 'olga_moscow',
       password: hashedPassword,
       bio: 'Fashion designer and stylist',
-      location: 'Atlanta, USA',
-      image: 'https://i.pravatar.cc/150?img=16',
+      image: 'https://i.pravatar.cc/150?img=11',
+      isVerified: true,
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
     },
     {
-      name: 'Noah Harris',
-      email: 'noah@example.com',
-      username: 'noahharris',
+      name: 'David Lee',
+      email: 'david@example.com',
+      username: 'david_nyc',
+      password: hashedPassword,
+      bio: 'Chef and restaurant owner',
+      image: 'https://i.pravatar.cc/150?img=12',
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
+    },
+    {
+      name: 'Andi Wijaya',
+      email: 'andi@example.com',
+      username: 'andi_tangerang',
+      password: hashedPassword,
+      bio: 'Graphic designer and illustrator',
+      image: 'https://i.pravatar.cc/150?img=13',
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
+    },
+    {
+      name: 'Lisa Johnson',
+      email: 'lisa@example.com',
+      username: 'lisa_brooklyn',
+      password: hashedPassword,
+      bio: 'Writer and book editor',
+      image: 'https://i.pravatar.cc/150?img=14',
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
+    },
+    {
+      name: 'Igor Volkov',
+      email: 'igor@example.com',
+      username: 'igor_spb',
+      password: hashedPassword,
+      bio: 'Professional photographer',
+      image: 'https://i.pravatar.cc/150?img=15',
+      isVerified: true,
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
+    },
+    {
+      name: 'Maya Putri',
+      email: 'maya@example.com',
+      username: 'maya_depok',
+      password: hashedPassword,
+      bio: 'Yoga instructor and wellness coach',
+      image: 'https://i.pravatar.cc/150?img=16',
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
+    },
+    {
+      name: 'James Wilson',
+      email: 'james@example.com',
+      username: 'james_manhattan',
       password: hashedPassword,
       bio: 'Data scientist and AI researcher',
-      location: 'San Jose, USA',
       image: 'https://i.pravatar.cc/150?img=17',
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
     },
     {
-      name: 'Olivia Martin',
-      email: 'olivia@example.com',
-      username: 'oliviamartin',
+      name: 'Ekaterina Smirnova',
+      email: 'ekaterina@example.com',
+      username: 'kate_moscow',
       password: hashedPassword,
-      bio: 'Marketing consultant and brand strategist',
-      location: 'Nashville, USA',
+      bio: 'Startup founder and mentor',
       image: 'https://i.pravatar.cc/150?img=18',
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
     },
     {
-      name: 'Paul Thompson',
-      email: 'paul@example.com',
-      username: 'paulthompson',
+      name: 'Rachel Green',
+      email: 'rachel@example.com',
+      username: 'rachel_nyc',
       password: hashedPassword,
-      bio: 'Film director and screenwriter',
-      location: 'Los Angeles, USA',
+      bio: 'Fashion buyer and influencer',
       image: 'https://i.pravatar.cc/150?img=19',
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
     },
     {
-      name: 'Quinn Garcia',
-      email: 'quinn@example.com',
-      username: 'quinngarcia',
+      name: 'Ahmad Rizki',
+      email: 'ahmad@example.com',
+      username: 'ahmad_bekasi',
       password: hashedPassword,
-      bio: 'Environmental activist and sustainability expert',
-      location: 'Portland, USA',
+      bio: 'Personal trainer and nutritionist',
       image: 'https://i.pravatar.cc/150?img=20',
+      isVerified: true,
+      joinReasons: getRandomJoinReasons(),
+      onboardingCompleted: true,
     },
   ]
 
@@ -237,84 +479,141 @@ async function main() {
   console.log(`Password: ${DEFAULT_PASSWORD}`)
   console.log('========================\n')
 
-  // Create Interests
+  // ============================================
+  // CREATE USER COORDINATES
+  // ============================================
+  console.log('📍 Creating user coordinates...')
+  for (let i = 0; i < users.length; i++) {
+    const locationData = ALL_LOCATIONS[i % ALL_LOCATIONS.length];
+
+    await prisma.userCoordinates.create({
+      data: {
+        userId: users[i].id,
+        latitude: locationData.lat,
+        longitude: locationData.lng,
+        city: locationData.city,
+        district: locationData.district,
+        province: locationData.province,
+        country: locationData.country,
+        source: 'manual',
+      },
+    });
+  }
+  console.log(`✅ Created coordinates for ${users.length} users\n`)
+
+  // ============================================
+  // CREATE USER HANGOUT PLACES
+  // ============================================
+  console.log('🏢 Creating user hangout places...')
+  for (let i = 0; i < users.length; i++) {
+    // Each user gets 1-3 hangout places
+    const placeCount = Math.floor(Math.random() * 3) + 1;
+    const shuffledPlaces = [...ALL_HANGOUT_PLACES].sort(() => 0.5 - Math.random());
+
+    for (let j = 0; j < placeCount; j++) {
+      const place = shuffledPlaces[j];
+
+      await prisma.userHangoutPlace.create({
+        data: {
+          userId: users[i].id,
+          placeName: place.name,
+          placeType: place.type as any,
+          latitude: place.lat,
+          longitude: place.lng,
+          address: place.address,
+          city: place.city,
+          isPrimary: j === 0, // First place is primary
+          visitFrequency: j === 0 ? 'daily' : (j === 1 ? 'weekly' : 'monthly'),
+        },
+      });
+    }
+  }
+  console.log(`✅ Created hangout places for ${users.length} users\n`)
+
+  // // ============================================
+  // // CREATE DAILY MOODS
+  // // ============================================
+  // console.log('😊 Creating daily moods...')
+  // const today = new Date();
+  // today.setHours(0, 0, 0, 0);
+
+  // for (let i = 0; i < users.length; i++) {
+  //   const mood = MOOD_TYPES[i % MOOD_TYPES.length];
+  //   const energy = Math.floor(Math.random() * 5) + 5; // 5-10
+  //   const sociable = Math.floor(Math.random() * 5) + 5; // 5-10
+
+  //   await prisma.dailyMood.create({
+  //     data: {
+  //       userId: users[i].id,
+  //       date: today,
+  //       mood: mood,
+  //       energy: energy,
+  //       sociable: sociable,
+  //       reasons: i % 3 === 0 
+  //         ? ['make new friends', 'try something new'] 
+  //         : (i % 2 === 0 ? ['explore city', 'attend events'] : ['relax', 'have fun']),
+  //       source: 'manual',
+  //     },
+  //   });
+  // }
+  // console.log(`✅ Created moods for ${users.length} users\n`)
+
+  // ============================================
+  // CREATE INTERESTS (WITH CATEGORIES & ICONS)
+  // ============================================
   console.log('💡 Creating interests...')
-  const interestNames = [
-    'Fitness',
-    'Yoga',
-    'Music',
-    'Dancing',
-    'Technology',
-    'Gaming',
-    'Photography',
-    'Cooking',
-    'Travel',
-    'Reading',
-    'Art',
-    'Sports',
-    'Meditation',
-    'Entrepreneurship',
-    'Networking',
-  ]
 
   const interests = await Promise.all(
-    interestNames.map((name) =>
+    INTERESTS_DATA.map((data, index) =>
       prisma.interest.create({
-        data: { name },
+        data: {
+          name: data.name,
+          slug: data.slug,
+          category: data.category as any,
+          icon: data.icon,
+          order: index,
+        },
       })
     )
   )
-  console.log(`✅ Created ${interests.length} interests`)
+  console.log(`✅ Created ${interests.length} interests\n`)
 
-  // Assign interests to users (manual mapping)
+  // ============================================
+  // ASSIGN INTERESTS TO USERS
+  // ============================================
   console.log('🔗 Assigning interests to users...')
-  const userInterestMapping = [
-    { userId: users[0].id, interestIds: [0, 4, 14] }, // John: Fitness, Tech, Networking
-    { userId: users[1].id, interestIds: [2, 10, 14] }, // Jane: Music, Art, Networking
-    { userId: users[2].id, interestIds: [4, 13, 14] }, // Admin: Tech, Entrepreneurship, Networking
-    { userId: users[3].id, interestIds: [0, 1, 12] }, // Alice: Fitness, Yoga, Meditation
-    { userId: users[4].id, interestIds: [6, 8, 10] }, // Bob: Photography, Travel, Art
-    { userId: users[5].id, interestIds: [7, 14, 8] }, // Carol: Cooking, Networking, Travel
-    { userId: users[6].id, interestIds: [4, 5, 14] }, // David: Tech, Gaming, Networking
-    { userId: users[7].id, interestIds: [8, 6, 14] }, // Emma: Travel, Photography, Networking
-    { userId: users[8].id, interestIds: [10, 6, 4] }, // Frank: Art, Photography, Tech
-    { userId: users[9].id, interestIds: [0, 11, 1] }, // Grace: Fitness, Sports, Yoga
-    { userId: users[10].id, interestIds: [13, 4, 14] }, // Henry: Entrepreneurship, Tech, Networking
-    { userId: users[11].id, interestIds: [9, 10, 8] }, // Ivy: Reading, Art, Travel
-    { userId: users[12].id, interestIds: [2, 3, 14] }, // Jack: Music, Dancing, Networking
-    { userId: users[13].id, interestIds: [1, 12, 0] }, // Karen: Yoga, Meditation, Fitness
-    { userId: users[14].id, interestIds: [11, 0, 14] }, // Leo: Sports, Fitness, Networking
-    { userId: users[15].id, interestIds: [10, 6, 2] }, // Mia: Art, Photography, Music
-    { userId: users[16].id, interestIds: [4, 5, 13] }, // Noah: Tech, Gaming, Entrepreneurship
-    { userId: users[17].id, interestIds: [14, 4, 10] }, // Olivia: Networking, Tech, Art
-    { userId: users[18].id, interestIds: [10, 2, 6] }, // Paul: Art, Music, Photography
-    { userId: users[19].id, interestIds: [8, 14, 13] }, // Quinn: Travel, Networking, Entrepreneurship
-  ]
 
-  for (const mapping of userInterestMapping) {
+  // Each user gets 3-5 random interests
+  for (const user of users) {
+    const interestCount = Math.floor(Math.random() * 3) + 3; // 3-5
+    const shuffledInterests = [...interests].sort(() => 0.5 - Math.random());
+    const selectedInterests = shuffledInterests.slice(0, interestCount);
+
     await Promise.all(
-      mapping.interestIds.map((idx) =>
+      selectedInterests.map((interest) =>
         prisma.userInterest.create({
           data: {
-            userId: mapping.userId,
-            interestId: interests[idx].id,
+            userId: user.id,
+            interestId: interest.id,
           },
         })
       )
-    )
+    );
   }
-  console.log('✅ Assigned interests to users')
+  console.log('✅ Assigned interests to users\n')
 
-  // Create Communities
+  // ============================================
+  // CREATE COMMUNITIES
+  // ============================================
   console.log('🏘️ Creating communities...')
   const communityData = [
     {
       name: 'Tech Innovators',
-      description: 'A community for technology enthusiasts and innovators',
+      description: 'A global community for technology enthusiasts and innovators',
     },
     {
       name: 'Fitness Warriors',
-      description: 'Get fit together with our active community',
+      description: 'Get fit together with our active community across cities',
     },
     {
       name: 'Creative Minds',
@@ -333,12 +632,12 @@ async function main() {
       description: 'Travel and outdoor activities enthusiasts',
     },
     {
-      name: 'Book Club Elite',
+      name: 'Book Club International',
       description: 'Monthly book discussions and literary events',
     },
     {
       name: 'Startup Founders',
-      description: 'Network with fellow entrepreneurs',
+      description: 'Network with fellow entrepreneurs worldwide',
     },
   ]
 
@@ -349,65 +648,60 @@ async function main() {
       })
     )
   )
-  console.log(`✅ Created ${communities.length} communities`)
+  console.log(`✅ Created ${communities.length} communities\n`)
 
-  // Assign users to communities
+  // ============================================
+  // ASSIGN USERS TO COMMUNITIES
+  // ============================================
   console.log('🔗 Assigning users to communities...')
-  const userCommunityMapping = [
-    { userId: users[0].id, communityIds: [0, 1] }, // John: Tech, Fitness
-    { userId: users[1].id, communityIds: [3, 2] }, // Jane: Music, Creative
-    { userId: users[2].id, communityIds: [0, 7] }, // Admin: Tech, Startup
-    { userId: users[3].id, communityIds: [1, 2] }, // Alice: Fitness, Creative
-    { userId: users[4].id, communityIds: [2, 5] }, // Bob: Creative, Adventure
-    { userId: users[5].id, communityIds: [4, 5] }, // Carol: Foodies, Adventure
-    { userId: users[6].id, communityIds: [0, 7] }, // David: Tech, Startup
-    { userId: users[7].id, communityIds: [5, 2] }, // Emma: Adventure, Creative
-    { userId: users[8].id, communityIds: [2, 0] }, // Frank: Creative, Tech
-    { userId: users[9].id, communityIds: [1, 2] }, // Grace: Fitness, Creative
-    { userId: users[10].id, communityIds: [7, 0] }, // Henry: Startup, Tech
-    { userId: users[11].id, communityIds: [6, 2] }, // Ivy: Book Club, Creative
-    { userId: users[12].id, communityIds: [3, 2] }, // Jack: Music, Creative
-    { userId: users[13].id, communityIds: [1, 2] }, // Karen: Fitness, Creative
-    { userId: users[14].id, communityIds: [1, 7] }, // Leo: Fitness, Startup
-    { userId: users[15].id, communityIds: [2, 3] }, // Mia: Creative, Music
-    { userId: users[16].id, communityIds: [0, 7] }, // Noah: Tech, Startup
-    { userId: users[17].id, communityIds: [7, 0] }, // Olivia: Startup, Tech
-    { userId: users[18].id, communityIds: [2, 3] }, // Paul: Creative, Music
-    { userId: users[19].id, communityIds: [5, 7] }, // Quinn: Adventure, Startup
-  ]
 
-  for (const mapping of userCommunityMapping) {
+  // Each user joins 1-3 communities
+  for (const user of users) {
+    const communityCount = Math.floor(Math.random() * 3) + 1; // 1-3
+    const shuffledCommunities = [...communities].sort(() => 0.5 - Math.random());
+    const selectedCommunities = shuffledCommunities.slice(0, communityCount);
+
     await Promise.all(
-      mapping.communityIds.map((idx) =>
+      selectedCommunities.map((community) =>
         prisma.userCommunity.create({
           data: {
-            userId: mapping.userId,
-            communityId: communities[idx].id,
+            userId: user.id,
+            communityId: community.id,
           },
         })
       )
-    )
+    );
   }
-  console.log('✅ Assigned users to communities')
+  console.log('✅ Assigned users to communities\n')
 
-  // Create Places
+  // ============================================
+  // CREATE PLACES (MIXED LOCATIONS)
+  // ============================================
   console.log('📍 Creating places...')
   const placesData = [
-    { name: 'PowerHouse Gym', address: '123 Fitness Ave, New York', type: 'gym' },
-    { name: 'Yoga Studio Downtown', address: '456 Zen Street, Los Angeles', type: 'studio' },
-    { name: 'The Music Lounge', address: '789 Beat Boulevard, Miami', type: 'club' },
-    { name: 'TechHub Coworking', address: '321 Innovation Drive, San Francisco', type: 'cafe' },
-    { name: 'Sunset Bar & Grill', address: '654 Ocean View, San Diego', type: 'bar' },
-    { name: 'Green Leaf Cafe', address: '987 Organic Lane, Portland', type: 'cafe' },
-    { name: 'Central Park', address: '111 Park Avenue, New York', type: 'park' },
-    { name: 'Elite Fitness Center', address: '222 Health Street, Chicago', type: 'gym' },
-    { name: 'Jazz Night Club', address: '333 Music Row, Nashville', type: 'club' },
-    { name: 'Coffee & Code', address: '444 Tech Plaza, Austin', type: 'cafe' },
-    { name: 'Italian Kitchen', address: '555 Pasta Street, Boston', type: 'restaurant' },
-    { name: 'Sports Bar Downtown', address: '666 Game Street, Dallas', type: 'bar' },
-    { name: 'Meditation Garden', address: '777 Peace Avenue, Santa Fe', type: 'park' },
-    { name: 'Dance Studio Pro', address: '888 Rhythm Road, Las Vegas', type: 'studio' },
-    { name: 'Brewery & Bistro', address: '999 Craft Lane, Denver', type: 'bar' },
+    // Moscow Places
+    { name: 'PowerHouse Gym Moscow', address: 'Tverskaya St, 15', type: 'gym' as const, latitude: 55.7615, longitude: 37.6082, city: 'Moscow', district: 'Tverskoy' },
+    { name: 'Gorky Park', address: 'Krymsky Val, 9', type: 'park' as const, latitude: 55.7280, longitude: 37.6010, city: 'Moscow', district: 'Khamovniki' },
+    { name: 'Red October Bar', address: 'Bersenevskaya Emb, 6', type: 'bar' as const, latitude: 55.7446, longitude: 37.6106, city: 'Moscow', district: 'Zamoskvorechye' },
+
+    // Jakarta Places
+    { name: 'Fitness First Senayan', address: 'Jl. Asia Afrika, Senayan', type: 'gym' as const, latitude: -6.2188, longitude: 106.8019, city: 'Jakarta Pusat', district: 'Tanah Abang' },
+    { name: 'Taman Suropati', address: 'Jl. Taman Suropati, Menteng', type: 'park' as const, latitude: -6.1924, longitude: 106.8368, city: 'Jakarta Pusat', district: 'Menteng' },
+    { name: 'SKYE Bar & Restaurant', address: 'Jl. MH Thamrin No.1', type: 'bar' as const, latitude: -6.2088, longitude: 106.8456, city: 'Jakarta Pusat', district: 'Menteng' },
+
+    // New York Places
+    { name: 'Equinox Broadway', address: '897 Broadway', type: 'gym' as const, latitude: 40.7614, longitude: -73.9776, city: 'New York', district: 'Manhattan' },
+    { name: 'Central Park', address: 'Central Park West', type: 'park' as const, latitude: 40.7829, longitude: -73.9654, city: 'New York', district: 'Manhattan' },
+    { name: 'The Rooftop at Pier 17', address: '89 South Street', type: 'bar' as const, latitude: 40.7071, longitude: -74.0032, city: 'New York', district: 'Manhattan' },
+
+    // Cafes & Restaurants (Mixed)
+    { name: 'Coffee Mania Moscow', address: 'Bolshaya Dmitrovka, 32', type: 'cafe' as const, latitude: 55.7641, longitude: 37.6172, city: 'Moscow', district: 'Tverskoy' },
+    { name: 'Anomali Coffee Jakarta', address: 'Jl. Senopati Raya No.71', type: 'cafe' as const, latitude: -6.2425, longitude: 106.7983, city: 'Jakarta Selatan', district: 'Kebayoran Baru' },
+    { name: 'Blue Bottle Coffee NYC', address: '450 W 15th St', type: 'cafe' as const, latitude: 40.7438, longitude: -74.0065, city: 'New York', district: 'Manhattan' },
+
+    { name: 'White Rabbit Moscow', address: 'Smolenskaya Square, 3', type: 'restaurant' as const, latitude: 55.7490, longitude: 37.5828, city: 'Moscow', district: 'Arbat' },
+    { name: 'Plataran Menteng', address: 'Jl. HOS Cokroaminoto No.78', type: 'restaurant' as const, latitude: -6.1924, longitude: 106.8300, city: 'Jakarta Pusat', district: 'Menteng' },
+    { name: 'Carbone NYC', address: '181 Thompson St', type: 'restaurant' as const, latitude: 40.7285, longitude: -74.0015, city: 'New York', district: 'Manhattan' },
   ]
 
   const places = await Promise.all(
@@ -417,277 +711,28 @@ async function main() {
       })
     )
   )
-  console.log(`✅ Created ${places.length} places`)
-
-  // Create Promos for places
-  console.log('🎟️ Creating promos...')
-  const promosData = [
-    {
-      placeId: places[0].id,
-      title: '30% Off Annual Membership',
-      discountCode: 'GYM2025',
-      validUntil: new Date('2025-12-31'),
-    },
-    {
-      placeId: places[1].id,
-      title: 'First Class Free',
-      discountCode: 'YOGA123',
-      validUntil: new Date('2025-11-30'),
-    },
-    {
-      placeId: places[2].id,
-      title: 'Happy Hour 50% Off',
-      discountCode: 'MUSIC50',
-      validUntil: new Date('2025-12-15'),
-    },
-    {
-      placeId: places[3].id,
-      title: 'Student Discount 20%',
-      discountCode: 'STUDENT20',
-      validUntil: new Date('2026-06-30'),
-    },
-    {
-      placeId: places[4].id,
-      title: 'Weekend Special',
-      discountCode: 'WEEKEND',
-      validUntil: new Date('2025-10-31'),
-    },
-    {
-      placeId: places[5].id,
-      title: 'Buy 2 Get 1 Free',
-      discountCode: 'COFFEE3',
-      validUntil: new Date('2025-11-15'),
-    },
-    {
-      placeId: places[7].id,
-      title: 'Group Discount',
-      discountCode: 'GROUP10',
-      validUntil: new Date('2025-12-20'),
-    },
-    {
-      placeId: places[8].id,
-      title: 'Early Bird Special',
-      discountCode: 'EARLY25',
-      validUntil: new Date('2025-12-10'),
-    },
-    {
-      placeId: places[10].id,
-      title: 'Family Dinner Deal',
-      discountCode: 'FAMILY15',
-      validUntil: new Date('2025-12-25'),
-    },
-    {
-      placeId: places[14].id,
-      title: 'Craft Beer Tasting',
-      discountCode: 'BREW20',
-      validUntil: new Date('2025-11-20'),
-    },
-  ]
-
-  const promos = await Promise.all(
-    promosData.map((data) =>
-      prisma.promo.create({
-        data,
-      })
-    )
-  )
-  console.log(`✅ Created ${promos.length} promos`)
-
-  // Create Events
-  console.log('🎉 Creating events...')
-  const eventsData = [
-    {
-      name: 'Tech Networking Night',
-      description: 'Meet fellow tech enthusiasts and innovators',
-      date: new Date('2025-11-15T18:00:00Z'),
-      placeId: places[3].id,
-      communityId: communities[0].id,
-      banner: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800',
-    },
-    {
-      name: 'Morning Yoga Session',
-      description: 'Start your day with energy and mindfulness',
-      date: new Date('2025-11-10T08:00:00Z'),
-      placeId: places[1].id,
-      communityId: communities[1].id,
-      banner: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800',
-    },
-    {
-      name: 'HIIT Workout Class',
-      description: 'High intensity interval training for all levels',
-      date: new Date('2025-11-12T17:00:00Z'),
-      placeId: places[0].id,
-      communityId: communities[1].id,
-      banner: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800',
-    },
-    {
-      name: 'Art Gallery Opening',
-      description: 'Showcase of local artists and their work',
-      date: new Date('2025-11-20T19:00:00Z'),
-      placeId: places[9].id,
-      communityId: communities[2].id,
-      banner: 'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=800',
-    },
-    {
-      name: 'Live Jazz Night',
-      description: 'Enjoy live music and great vibes',
-      date: new Date('2025-11-18T20:00:00Z'),
-      placeId: places[8].id,
-      communityId: communities[3].id,
-      banner: 'https://images.unsplash.com/photo-1511192336575-5a79af67a629?w=800',
-    },
-    {
-      name: 'Open Mic Night',
-      description: 'Share your talent with the community',
-      date: new Date('2025-11-22T19:30:00Z'),
-      placeId: places[2].id,
-      communityId: communities[3].id,
-      banner: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800',
-    },
-    {
-      name: 'Cooking Workshop',
-      description: 'Learn to cook authentic Italian dishes',
-      date: new Date('2025-11-25T16:00:00Z'),
-      placeId: places[10].id,
-      communityId: communities[4].id,
-      banner: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=800',
-    },
-    {
-      name: 'Wine Tasting Evening',
-      description: 'Sample fine wines from around the world',
-      date: new Date('2025-11-28T18:30:00Z'),
-      placeId: places[4].id,
-      communityId: communities[4].id,
-      banner: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=800',
-    },
-    {
-      name: 'Hiking Adventure',
-      description: 'Explore beautiful trails together',
-      date: new Date('2025-11-16T09:00:00Z'),
-      placeId: places[6].id,
-      communityId: communities[5].id,
-      banner: 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=800',
-    },
-    {
-      name: 'Photography Walk',
-      description: 'Capture the beauty of the city',
-      date: new Date('2025-11-17T10:00:00Z'),
-      placeId: places[6].id,
-      communityId: communities[5].id,
-      banner: 'https://images.unsplash.com/photo-1452587925148-ce544e77e70d?w=800',
-    },
-    {
-      name: 'Book Discussion',
-      description: 'Monthly book club meeting',
-      date: new Date('2025-11-19T18:00:00Z'),
-      placeId: places[5].id,
-      communityId: communities[6].id,
-      banner: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?w=800',
-    },
-    {
-      name: 'Author Meet & Greet',
-      description: 'Meet bestselling author and get books signed',
-      date: new Date('2025-11-21T17:00:00Z'),
-      placeId: places[5].id,
-      communityId: communities[6].id,
-      banner: 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=800',
-    },
-    {
-      name: 'Startup Pitch Night',
-      description: 'Present your startup idea to investors',
-      date: new Date('2025-11-23T19:00:00Z'),
-      placeId: places[3].id,
-      communityId: communities[7].id,
-      banner: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800',
-    },
-    {
-      name: 'Entrepreneurship Workshop',
-      description: 'Learn from successful entrepreneurs',
-      date: new Date('2025-11-26T18:00:00Z'),
-      placeId: places[3].id,
-      communityId: communities[7].id,
-      banner: 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800',
-    },
-  ]
-
-  const events = await Promise.all(
-    eventsData.map((data) =>
-      prisma.event.create({
-        data,
-      })
-    )
-  )
-  console.log(`✅ Created ${events.length} events`)
-
-  // Assign users to events
-  console.log('🔗 Assigning users to events...')
-  const userEventMapping = [
-    { eventId: events[0].id, userIds: [0, 2, 6, 8, 10, 16] }, // Tech event
-    { eventId: events[1].id, userIds: [3, 9, 13] }, // Yoga
-    { eventId: events[2].id, userIds: [0, 3, 9, 14] }, // HIIT
-    { eventId: events[3].id, userIds: [4, 8, 15, 18] }, // Art
-    { eventId: events[4].id, userIds: [1, 12, 15, 18] }, // Jazz
-    { eventId: events[5].id, userIds: [1, 12] }, // Open mic
-    { eventId: events[6].id, userIds: [5, 7, 19] }, // Cooking
-    { eventId: events[7].id, userIds: [5, 7] }, // Wine tasting
-    { eventId: events[8].id, userIds: [4, 7, 19] }, // Hiking
-    { eventId: events[9].id, userIds: [4, 7, 8] }, // Photography
-    { eventId: events[10].id, userIds: [11] }, // Book discussion
-    { eventId: events[11].id, userIds: [11] }, // Author meet
-    { eventId: events[12].id, userIds: [2, 6, 10, 16, 17] }, // Pitch night
-    { eventId: events[13].id, userIds: [2, 10, 17, 19] }, // Workshop
-  ]
-
-  for (const mapping of userEventMapping) {
-    await Promise.all(
-      mapping.userIds.map((idx) =>
-        prisma.userEvent.create({
-          data: {
-            userId: users[idx].id,
-            eventId: mapping.eventId,
-          },
-        })
-      )
-    )
-  }
-  console.log('✅ Assigned users to events')
-
-  // Create User Matches (based on shared interests)
-  console.log('💝 Creating user matches...')
-  const matchesData = [
-    { user1Id: users[0].id, user2Id: users[2].id, matchScore: 66.67 }, // John & Admin (Tech, Networking)
-    { user1Id: users[0].id, user2Id: users[6].id, matchScore: 66.67 }, // John & David (Tech, Networking)
-    { user1Id: users[3].id, user2Id: users[9].id, matchScore: 100.0 }, // Alice & Grace (Fitness, Yoga)
-    { user1Id: users[3].id, user2Id: users[13].id, matchScore: 100.0 }, // Alice & Karen (Yoga, Meditation, Fitness)
-    { user1Id: users[4].id, user2Id: users[8].id, matchScore: 66.67 }, // Bob & Frank (Photography, Art)
-    { user1Id: users[1].id, user2Id: users[12].id, matchScore: 66.67 }, // Jane & Jack (Music, Networking)
-    { user1Id: users[2].id, user2Id: users[10].id, matchScore: 100.0 }, // Admin & Henry (Tech, Entrepreneurship, Networking)
-    { user1Id: users[6].id, user2Id: users[16].id, matchScore: 66.67 }, // David & Noah (Tech, Gaming)
-    { user1Id: users[7].id, user2Id: users[19].id, matchScore: 66.67 }, // Emma & Quinn (Travel, Networking)
-    { user1Id: users[10].id, user2Id: users[17].id, matchScore: 100.0 }, // Henry & Olivia (Entrepreneurship, Tech, Networking)
-  ]
-
-  const matches = await Promise.all(
-    matchesData.map((data) =>
-      prisma.userMatch.create({
-        data,
-      })
-    )
-  )
-  console.log(`✅ Created ${matches.length} user matches`)
+  console.log(`✅ Created ${places.length} places\n`)
 
   // Summary
-  console.log('\n📊 Seed Summary:')
+  console.log('📊 Seed Summary:')
   console.log('==================')
   console.log(`👥 Users: ${users.length}`)
-  console.log(`💡 Interests: ${interests.length}`)
+  console.log(`📍 User Coordinates: ${users.length}`)
+  console.log(`🏢 User Hangout Places: ${users.length * 2} (avg)`)
+  console.log(`😊 Daily Moods: ${users.length}`)
+  console.log(`💡 Interests: ${interests.length} (with categories)`)
   console.log(`🏘️ Communities: ${communities.length}`)
   console.log(`📍 Places: ${places.length}`)
-  console.log(`🎟️ Promos: ${promos.length}`)
-  console.log(`🎉 Events: ${events.length}`)
-  console.log(`💝 Matches: ${matches.length}`)
   console.log('==================')
-  console.log('✨ Seed completed successfully!')
+  console.log('\n✨ Seed completed successfully!')
+  console.log('\n🌍 Locations included:')
+  console.log('- 🇷🇺 Moscow & Saint Petersburg')
+  console.log('- 🇮🇩 Jakarta & surrounding areas')
+  console.log('- 🇺🇸 New York & New Jersey')
+  console.log('\n💡 Next steps:')
+  console.log('- Test profile setup flow')
+  console.log('- Implement matching algorithm')
+  console.log('- Create place/event recommendations')
 }
 
 main()

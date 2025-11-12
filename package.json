@@ -5,6 +5,7 @@
 "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "seed": "ts-node prisma/seed.ts",
+    "quiz": "ts-node prisma/quizseed.ts",
     "dev": "nodemon --exec ts-node app.ts",
     "error": "npx tsc --noEmit"
   },

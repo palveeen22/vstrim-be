@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
   output   = "../node_modules/.prisma/client"
@@ -14,28 +8,215 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Main Models
+// ============================================
+// USER MODEL (UPDATED)
+// ============================================
 model User {
-  id          String    @id @default(cuid())
-  name        String
-  email       String    @unique
-  bio         String?
-  location    String?
-  dateOfBirth DateTime?
-  createdAt   DateTime  @default(now()) @map("created_at")
-  password    String
-  image       String?
-  username    String?   @unique
-  isVerified  Boolean   @default(false)
+  id       String  @id @default(cuid())
+  name     String
+  email    String  @unique
+  password String
+  username String? @unique
 
-  // Relations
-  communities    UserCommunity[]
-  events         UserEvent[]
-  interests      UserInterest[]
-  matchesAsUser1 UserMatch[]     @relation("User1Matches")
-  matchesAsUser2 UserMatch[]     @relation("User2Matches")
+  // Profile info
+  bio         String?
+  dateOfBirth DateTime?
+  image       String?
+  vibes       VibeType[] @default([]) @map("vibes")
+
+  // 🆕 Updated: Join reasons (array with 1-3 items)
+  joinReasons JoinReason[] @default([]) @map("join_reasons")
+
+  // Account status
+  isVerified          Boolean @default(false) @map("is_verified")
+  onboardingCompleted Boolean @default(false) @map("onboarding_completed")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  dailyQuizzes DailyQuiz[] @relation("UserDailyQuizzes")
+
+  // Relations (same as before)
+  coordinates          UserCoordinates?
+  hangoutPlaces        UserHangoutPlace[]
+  communities          UserCommunity[]
+  events               UserEvent[]
+  interests            UserInterest[]
+  matchesAsUser1       UserMatch[]           @relation("User1Matches")
+  matchesAsUser2       UserMatch[]           @relation("User2Matches")
+  matchesGiven         Match[]               @relation("UserMatches")
+  matchesReceived      Match[]               @relation("MatchedUserMatches")
+  placeRecommendations PlaceRecommendation[]
+  eventRecommendations EventRecommendation[]
 
   @@map("users")
+}
+
+// ============================================
+// LOCATION (UPDATED)
+// ============================================
+model UserCoordinates {
+  id     String @id @default(cuid())
+  userId String @unique @map("user_id")
+
+  // Geographic data
+  latitude  Float
+  longitude Float
+
+  // 🆕 Address components (from reverse geocoding)
+  city       String?
+  district   String? // Kecamatan/District
+  province   String?
+  country    String? @default("Indonesia")
+  postalCode String? @map("postal_code")
+
+  // 🆕 Metadata
+  accuracy Float? // GPS accuracy in meters
+  source   LocationSource @default(manual) // How location was obtained
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([latitude, longitude])
+  @@index([city, district])
+  @@map("user_coordinates")
+}
+
+// 🆕 NEW: User's favorite hangout places
+model UserHangoutPlace {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+
+  // Place information
+  placeName String           @map("place_name")
+  placeType HangoutPlaceType @map("place_type")
+
+  // Geographic data
+  latitude  Float
+  longitude Float
+  address   String?
+  city      String?
+  district  String?
+
+  // 🆕 From Google Places API (optional but recommended)
+  googlePlaceId  String? @unique @map("google_place_id")
+  googleRating   Float?  @map("google_rating")
+  photoReference String? @map("photo_reference") // Google Places photo reference
+
+  // User preferences
+  isPrimary      Boolean         @default(false) @map("is_primary") // Main hangout spot
+  visitFrequency VisitFrequency? @map("visit_frequency")
+
+  // Metadata
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isPrimary])
+  @@index([latitude, longitude])
+  @@index([city, placeType])
+  @@map("user_hangout_places")
+}
+
+// ============================================
+// PLACES (UPDATED)
+// ============================================
+model Place {
+  id          String    @id @default(cuid())
+  name        String
+  address     String
+  type        PlaceType
+  description String?
+  image       String?
+
+  // Location coordinates
+  latitude  Float
+  longitude Float
+  city      String?
+  district  String?
+
+  // 🆕 Google Places integration
+  googlePlaceId String? @unique @map("google_place_id")
+
+  // Vibe/atmosphere tags untuk matching
+  vibes PlaceVibe[]
+
+  // Operating hours
+  openingHours Json? @map("opening_hours") // {monday: "09:00-22:00", ...}
+  priceRange   Int?  @default(2) // 1-4 ($ to $$$$)
+
+  rating    Float?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  events          Event[]
+  promos          Promo[]
+  recommendations PlaceRecommendation[]
+
+  @@index([latitude, longitude])
+  @@index([type, city])
+  @@map("places")
+}
+
+model PlaceVibe {
+  id      String   @id @default(cuid())
+  placeId String   @map("place_id")
+  vibe    VibeType
+
+  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@unique([placeId, vibe])
+  @@map("place_vibes")
+}
+
+// ============================================
+// EVENTS (UPDATED)
+// ============================================
+model Event {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  date        DateTime
+  endDate     DateTime? @map("end_date")
+  placeId     String    @map("place_id")
+  communityId String?   @map("community_id")
+  banner      String?
+
+  // Event characteristics
+  eventType EventType   @map("event_type")
+  vibes     EventVibe[]
+
+  capacity Int?
+  price    Float?  @default(0)
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  place           Place                 @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  community       Community?            @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  users           UserEvent[]
+  recommendations EventRecommendation[]
+
+  @@index([date, isActive])
+  @@index([placeId])
+  @@map("events")
+}
+
+model EventVibe {
+  id      String   @id @default(cuid())
+  eventId String   @map("event_id")
+  vibe    VibeType
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, vibe])
+  @@map("event_vibes")
 }
 
 model Community {
@@ -44,43 +225,10 @@ model Community {
   description String?
   createdAt   DateTime @default(now()) @map("created_at")
 
-  // Relations
   users  UserCommunity[]
   events Event[]
 
   @@map("communities")
-}
-
-model Place {
-  id        String   @id @default(cuid())
-  name      String
-  address   String
-  type      String // bar, gym, club, etc.
-  createdAt DateTime @default(now()) @map("created_at")
-
-  // Relations
-  events Event[]
-  promos Promo[]
-
-  @@map("places")
-}
-
-model Event {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  date        DateTime
-  placeId     String   @map("place_id")
-  communityId String   @map("community_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  banner      String?
-
-  // Relations
-  place     Place       @relation(fields: [placeId], references: [id], onDelete: Cascade)
-  community Community   @relation(fields: [communityId], references: [id], onDelete: Cascade)
-  users     UserEvent[]
-
-  @@map("events")
 }
 
 model Promo {
@@ -91,28 +239,40 @@ model Promo {
   validUntil   DateTime @map("valid_until")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  // Relations
   place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
   @@map("promos")
 }
 
+// ============================================
+// INTERESTS (UPDATED)
+// ============================================
 model Interest {
-  id   String @id @default(cuid())
-  name String @unique
+  id       String           @id @default(cuid())
+  name     String           @unique
+  slug     String           @unique // 🆕 URL-friendly identifier
+  category InterestCategory @default(general)
 
-  // Relations
+  // 🆕 UI helpers
+  icon  String? // Emoji or icon identifier
+  order Int? // Display order in UI
+
+  createdAt DateTime @default(now()) @map("created_at")
+
   users UserInterest[]
 
+  @@index([category, order])
   @@map("interests")
 }
 
-// Junction Tables (Many-to-Many relationships)
+// ============================================
+// JUNCTION TABLES
+// ============================================
 model UserCommunity {
-  userId      String @map("user_id")
-  communityId String @map("community_id")
+  userId      String   @map("user_id")
+  communityId String   @map("community_id")
+  joinedAt    DateTime @default(now()) @map("joined_at") // 🆕
 
-  // Relations
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
 
@@ -121,10 +281,12 @@ model UserCommunity {
 }
 
 model UserEvent {
-  userId  String @map("user_id")
-  eventId String @map("event_id")
+  userId  String                @map("user_id")
+  eventId String                @map("event_id")
+  status  EventAttendanceStatus @default(interested)
 
-  // Relations
+  createdAt DateTime @default(now()) @map("created_at") // 🆕
+
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
@@ -136,7 +298,8 @@ model UserInterest {
   userId     String @map("user_id")
   interestId String @map("interest_id")
 
-  // Relations
+  createdAt DateTime @default(now()) @map("created_at") // 🆕
+
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   interest Interest @relation(fields: [interestId], references: [id], onDelete: Cascade)
 
@@ -144,16 +307,338 @@ model UserInterest {
   @@map("user_interests")
 }
 
+// ============================================
+// MATCHING SYSTEM
+// ============================================
 model UserMatch {
   user1Id    String   @map("user1_id")
   user2Id    String   @map("user2_id")
   matchScore Float    @map("match_score")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  // Relations
   user1 User @relation("User1Matches", fields: [user1Id], references: [id], onDelete: Cascade)
   user2 User @relation("User2Matches", fields: [user2Id], references: [id], onDelete: Cascade)
 
   @@id([user1Id, user2Id])
   @@map("user_matches")
+}
+
+model Match {
+  id            String @id @default(cuid())
+  userId        String @map("user_id")
+  matchedUserId String @map("matched_user_id")
+
+  score         Float
+  quizSessionId String @map("quiz_session_id")
+  distance      Float?
+  breakdown     Json
+
+  status      MatchStatus @default(pending)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  expiresAt   DateTime    @map("expires_at")
+  respondedAt DateTime?   @map("responded_at")
+
+  user        User @relation("UserMatches", fields: [userId], references: [id], onDelete: Cascade)
+  matchedUser User @relation("MatchedUserMatches", fields: [matchedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchedUserId, quizSessionId])
+  @@index([userId, status, createdAt])
+  @@index([score])
+  @@index([expiresAt])
+  @@map("matches")
+}
+
+model PlaceRecommendation {
+  id      String @id @default(cuid())
+  userId  String @map("user_id")
+  placeId String @map("place_id")
+
+  score         Float
+  quizSessionId String @map("quiz_session_id")
+  distance      Float
+  breakdown     Json
+
+  reason    String
+  isViewed  Boolean @default(false) @map("is_viewed")
+  isVisited Boolean @default(false) @map("is_visited")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime @map("expires_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, placeId, quizSessionId])
+  @@index([userId, createdAt])
+  @@index([score])
+  @@map("place_recommendations")
+}
+
+model EventRecommendation {
+  id      String @id @default(cuid())
+  userId  String @map("user_id")
+  eventId String @map("event_id")
+
+  score         Float
+  quizSessionId String @map("quiz_session_id")
+  distance      Float
+  breakdown     Json
+
+  reason       String
+  isViewed     Boolean @default(false) @map("is_viewed")
+  isInterested Boolean @default(false) @map("is_interested")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime @map("expires_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId, quizSessionId])
+  @@index([userId, createdAt])
+  @@index([score])
+  @@map("event_recommendations")
+}
+
+// ============================================
+// QUIZ SYSTEM
+// ============================================
+model DailyQuiz {
+  id          String   @id @default(cuid())
+  userId      String
+  createdAt   DateTime @default(now())
+  isCompleted Boolean  @default(false)
+
+  answers QuizAnswer[]
+  user    User         @relation("UserDailyQuizzes", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, isCompleted])
+  @@map("daily_quizzes")
+}
+
+model QuizQuestion {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  type        QuestionType
+  createdAt   DateTime     @default(now())
+
+  options QuizOption[]
+
+  answers QuizAnswer[] @relation("QuestionAnswers")
+}
+
+model QuizAnswer {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  dailyQuizId String   @map("daily_quiz_id")
+  questionId  String   @map("question_id")
+  selectedIds String[] @map("selected_ids")
+  answeredAt  DateTime @default(now()) @map("answered_at")
+
+  dailyQuiz DailyQuiz    @relation(fields: [dailyQuizId], references: [id], onDelete: Cascade)
+  question  QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade, name: "QuestionAnswers")
+
+  @@index([userId])
+  @@index([dailyQuizId])
+  @@map("quiz_answers")
+}
+
+
+model QuizOption {
+  id         String @id @default(cuid())
+  questionId String
+  label      String
+  icon       String
+
+  question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// ENUMS
+// ============================================
+enum QuestionType {
+  single
+  multiple
+}
+
+enum QuizCategory {
+  personality
+  interest
+  lifestyle
+  values
+  activity
+  mood
+  social_preference
+  general
+}
+
+enum MoodType {
+  energetic
+  calm
+  adventurous
+  chill
+  social
+  introspective
+  creative
+  focused
+  happy
+  melancholic
+  romantic
+  spontaneous
+}
+
+enum MoodSource {
+  manual
+  quiz
+  ai_detected
+}
+
+enum MatchStatus {
+  pending
+  accepted
+  declined
+  expired
+  mutual
+}
+
+enum PlaceType {
+  bar
+  cafe
+  restaurant
+  gym
+  club
+  park
+  coworking
+  museum
+  cinema
+  beach
+  mall
+  library
+  bookstore
+  art_gallery
+  studio
+}
+
+// 🆕 NEW: Hangout place types (untuk user preferences)
+enum HangoutPlaceType {
+  cafe
+  restaurant
+  bar
+  club
+  gym
+  park
+  mall
+  coworking
+  library
+  bookstore
+  beach
+  museum
+  art_gallery
+  cinema
+  sports_venue
+  community_center
+  other
+}
+
+enum EventType {
+  party
+  workshop
+  meetup
+  concert
+  sport
+  exhibition
+  conference
+  networking
+  casual_hangout
+  fitness_class
+  food_tasting
+  game_night
+}
+
+enum VibeType {
+  // Energy
+  energetic
+  chill
+  relaxed
+  intense
+
+  // Social
+  social
+  intimate
+  crowded
+  quiet
+
+  // Activity
+  active
+  passive
+  creative
+  competitive
+
+  // Atmosphere
+  casual
+  formal
+  romantic
+  adventurous
+  intellectual
+  fun
+  trendy
+  cozy
+  outdoor
+  indoor
+}
+
+enum InterestCategory {
+  sports
+  arts
+  music
+  food
+  tech
+  gaming
+  fitness
+  reading
+  travel
+  wellness
+  social
+  learning
+  entertainment
+  general
+}
+
+enum EventAttendanceStatus {
+  interested
+  going
+  maybe
+  went
+}
+
+// 🆕 NEW: Location source tracking
+enum LocationSource {
+  manual // User manually entered
+  gps // GPS/geolocation API
+  google_places // From Google Places search
+  ip_address // Fallback from IP
+}
+
+// 🆕 NEW: Visit frequency
+enum VisitFrequency {
+  daily
+  weekly
+  monthly
+  occasionally
+  rarely
+}
+
+enum JoinReason {
+  MAKE_FRIENDS            @map("make_friends")
+  FIND_ACTIVITY_PARTNERS  @map("find_activity_partners")
+  EXPLORE_CITY            @map("explore_city")
+  TRY_NEW_EXPERIENCES     @map("try_new_experiences")
+  PROFESSIONAL_NETWORKING @map("professional_networking")
+  DATING_RELATIONSHIPS    @map("dating_relationships")
+  NEW_TO_AREA             @map("new_to_area")
+  EXPAND_SOCIAL_CIRCLE    @map("expand_social_circle")
+  FIND_HOBBY_COMMUNITY    @map("find_hobby_community")
+  ATTEND_EVENTS           @map("attend_events")
 }

@@ -26,6 +26,7 @@ interface JWTPayload {
   exp?: number;
 }
 
+
 export const authenticate = async (
   req: Request,
   res: Response,
@@ -115,7 +116,7 @@ export const authenticate = async (
         username: true,
         image: true,
         bio: true,
-        location: true,
+        // location: true,
       },
     });
 
@@ -152,7 +153,7 @@ export const authenticate = async (
 // Optional: Middleware for optional authentication (doesn't fail if no token)
 export const optionalAuthenticate = async (
   req: Request,
-  res: Response,
+  // res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
