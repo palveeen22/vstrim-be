@@ -61,6 +61,7 @@ interface SubmitQuizResponse {
   answeredQuestions: number;
   completedAt: Date;
   message: string;
+  user?: any
 }
 
 interface QuizCompletionStatus {
@@ -69,6 +70,7 @@ interface QuizCompletionStatus {
   dailyQuizId: string | null;
   totalQuestions: number;
   answeredQuestions: number;
+  user?: any
 }
 
 // Get today's quiz
@@ -135,7 +137,7 @@ class DailyQuizService {
     return false;
   }
 
- 
+
   private static async getQuestionsCount(): Promise<number> {
     return await prisma.quizQuestion.count();
   }
@@ -240,55 +242,47 @@ class DailyQuizService {
   // }
 
 
+  // DailyQuizService.ts
+
+  // DailyQuizService.ts
   static async submitQuiz(
     userId: string,
     answers: SubmitQuizAnswer[]
   ): Promise<SubmitQuizResponse> {
     try {
-      console.log(answers, "<<<<ANS");
-      
-      // 1. Validate input
+      console.log('📥 Received answers:', answers);
+
+      // 1️⃣ Validasi input
       if (!answers || answers.length === 0) {
         throw new Error('No answers provided');
       }
 
-      // 🔧 FIX: Type-safe flattening with explicit typing
+      // 2️⃣ Flatten jawaban agar aman
       const flatAnswers = answers.map(answer => {
         const options = answer.selectedOptions as (string | { id: string })[];
-        
         return {
           questionId: answer.questionId,
-          selectedOptions: options.map(opt => {
-            if (typeof opt === 'object' && opt !== null && 'id' in opt) {
-              return opt.id;
-            }
-            return opt as string;
-          })
+          selectedOptions: options.map(opt =>
+            typeof opt === 'object' && opt !== null && 'id' in opt ? opt.id : (opt as string)
+          ),
         };
       });
 
-      console.log(flatAnswers, "<<<<FLATTENED");
-
-      // 2. Verify all questions exist
+      // 3️⃣ Pastikan semua questionId valid
       const questionIds = flatAnswers.map(a => a.questionId);
       const questions = await prisma.quizQuestion.findMany({
-        where: { id: { in: questionIds } }
+        where: { id: { in: questionIds } },
       });
-
-      console.log(`Found ${questions.length} questions out of ${questionIds.length}`);
 
       if (questions.length !== questionIds.length) {
         const foundIds = new Set(questions.map(q => q.id));
         const missingIds = questionIds.filter(id => !foundIds.has(id));
-        throw new Error(
-          `Some questions not found. Missing IDs: ${missingIds.join(', ')}`
-        );
+        throw new Error(`Some questions not found: ${missingIds.join(', ')}`);
       }
 
-      // 3. Check if user already completed today's quiz
+      // 4️⃣ Cek apakah user sudah menyelesaikan quiz hari ini
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -297,12 +291,11 @@ class DailyQuizService {
           userId,
           createdAt: {
             gte: today,
-            lt: tomorrow
-          }
-        }
+            lt: tomorrow,
+          },
+        },
       });
 
-      // ✅ Prevent duplicate submissions
       if (dailyQuiz && dailyQuiz.isCompleted) {
         return {
           isCompleted: true,
@@ -310,64 +303,90 @@ class DailyQuizService {
           totalQuestions: flatAnswers.length,
           answeredQuestions: flatAnswers.length,
           completedAt: dailyQuiz.createdAt,
-          message: 'Quiz already completed today'
+          message: 'Quiz already completed today',
         };
       }
 
-      // 4. Create new quiz if doesn't exist
+      // 5️⃣ Buat daily quiz baru jika belum ada
       if (!dailyQuiz) {
         dailyQuiz = await prisma.dailyQuiz.create({
-          data: {
-            userId,
-            isCompleted: false
-          }
+          data: { userId, isCompleted: false },
         });
       }
 
-      // 5. Save answers (delete old ones first to prevent duplicates)
+      // 6️⃣ Hapus jawaban lama jika ada
       await prisma.quizAnswer.deleteMany({
-        where: {
-          dailyQuizId: dailyQuiz.id,
-          questionId: { in: questionIds }
-        }
+        where: { dailyQuizId: dailyQuiz.id, questionId: { in: questionIds } },
       });
 
-      // 6. Create new answers with flattened option IDs
+      // 7️⃣ Simpan jawaban baru
       await prisma.quizAnswer.createMany({
         data: flatAnswers.map(answer => ({
           userId,
           dailyQuizId: dailyQuiz.id,
           questionId: answer.questionId,
           selectedIds: answer.selectedOptions,
-          answeredAt: new Date()
-        }))
+          answeredAt: new Date(),
+        })),
       });
 
-      // 7. Mark quiz as completed
+      // 8️⃣ Tandai quiz sebagai completed
       const updatedQuiz = await prisma.dailyQuiz.update({
         where: { id: dailyQuiz.id },
-        data: { isCompleted: true }
+        data: { isCompleted: true },
       });
 
-      // 8. Return response with ISO string for completedAt
+      // 9️⃣ Tambahkan +100 token ke user dan ambil data lengkap
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          tokens: { increment: 100 },
+        },
+        include: {
+          dailyQuizzes: {
+            include: {
+              answers: {
+                include: {
+                  question: {
+                    include: {
+                      options: true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          communities: {
+            include: {
+              community: true
+            }
+          },
+          hangoutPlaces: true,
+          coordinates: true,
+        },
+      });
+
+      console.log(`🎉 User ${userId} gained +100 tokens! Total: ${updatedUser.tokens}`);
+
+      // 🔟 Return response lengkap
       return {
         isCompleted: updatedQuiz.isCompleted,
         dailyQuizId: updatedQuiz.id,
         totalQuestions: flatAnswers.length,
         answeredQuestions: flatAnswers.length,
-        completedAt: updatedQuiz.createdAt, // Will be serialized to ISO string by Express
-        message: 'Quiz submitted successfully'
+        completedAt: updatedQuiz.createdAt,
+        message: 'Quiz submitted successfully. +100 tokens rewarded!',
+        user: updatedUser,
       };
-
     } catch (error) {
-      console.error('Submit quiz error:', error);
+      console.error('❌ Submit quiz error:', error);
       throw new Error(
-        error instanceof Error 
-          ? error.message 
-          : 'Failed to submit quiz'
+        error instanceof Error ? error.message : 'Failed to submit quiz'
       );
     }
   }
+
+
 
   static async getUserLatestAnswers(userId: string) {
     const latestSession = await prisma.quizSession.findFirst({
@@ -411,7 +430,7 @@ class DailyQuizService {
     return latestSession;
   }
 
-static async checkTodayCompletion(userId: string): Promise<QuizCompletionStatus> {
+  static async checkTodayCompletion(userId: string): Promise<QuizCompletionStatus> {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -535,7 +554,7 @@ static async checkTodayCompletion(userId: string): Promise<QuizCompletionStatus>
     return this.getDailyQuiz();
   }
 
- 
+
   static clearCache(): void {
     this.cache = {
       questions: null,

@@ -1,11 +1,10 @@
-import { JoinReason, Prisma, User } from '@prisma/client';
+import { InterestCategory, JoinReason, Prisma, User, UserCoordinates, UserHangoutPlace, VibeType } from '@prisma/client';
 import prisma from '../../prisma'
 import AppError from "../../libs/app-error";
 import * as bcrypt from 'bcrypt';
 import RedisClient from '../../libs/redis-client';
 
 export interface CreateUserParams {
-  name: string;
   email: string;
   password: string;
   isVerified?: boolean;
@@ -44,7 +43,11 @@ export interface UpdateUserParams {
   bio?: string;
   dateOfBirth?: Date;
   image?: string;
+  vibes?: VibeType[];
+  coordinates?: UserCoordinates;
   joinReasons?: JoinReason[];
+  interests?: InterestCategory[];
+  hangoutPlaces?: UserHangoutPlace[];
 }
 
 class UserService {
@@ -64,10 +67,26 @@ class UserService {
           ]
         },
         include: {
-          dailyQuizzes: true,
+          dailyQuizzes: {
+            include: {
+              answers: {
+                include: {
+                  question: {
+                    include: {
+                      options: true
+                    }
+                  }
+                }
+              }
+            }
+          },
           coordinates: true,
           hangoutPlaces: true,
-          communities: true,
+          communities: {
+            include:{
+              community: true
+            }
+          },
         }
       });
     }
@@ -128,9 +147,6 @@ class UserService {
       throw new AppError(400, "Email must be provided", 400);
     }
 
-    if (!params.name) {
-      throw new AppError(400, "Name must be provided", 400);
-    }
 
     if (!params.password) {
       throw new AppError(400, "Password must be provided", 400);
@@ -142,7 +158,6 @@ class UserService {
     // Build userData
     const userData: Prisma.UserCreateInput = {
       email: params.email,
-      name: params.name,
       password: hashedPassword,
       isVerified: params.isVerified ?? false,
       onboardingCompleted: false
@@ -265,57 +280,87 @@ class UserService {
     }
   }
 
-
-  static async verifyUser(
+  static async completeProfileUser(
     userId: string,
     params: UpdateUserParams
   ): Promise<Omit<User, 'password'> | null> {
     try {
-      // Check if user exists
+      // 1. Check if user exists
       const existingUser = await prisma.user.findUnique({
-        where: { id: userId }
+        where: { id: userId },
       });
 
       if (!existingUser) {
         throw new AppError(404, "User not found", 404);
       }
-      // 3. Update user with verification data
+
+      // 2. Update user with verification data
       const verifiedUser = await prisma.user.update({
         where: { id: userId },
         data: {
+          name: params.name,
           username: params.username,
           bio: params.bio,
-          location: params.location,
-          mood: params.mood,
-          reasons: params.reasons,
           dateOfBirth: params.dateOfBirth,
           image: params.image,
-          isVerified: true,
+          onboardingCompleted: true,
+
+          vibes: params.vibes ? {
+            set: params.vibes as VibeType[]
+          } : undefined,
+          joinReasons: params.joinReasons ? {
+            set: params.joinReasons as JoinReason[]
+          } : undefined,
+          interests: params.interests ? {
+            set: params.interests as InterestCategory[]
+          } : undefined,
+
+          coordinates: params.coordinates
+            ? {
+              upsert: {
+                create: params.coordinates,
+                update: params.coordinates,
+              },
+            }
+            : undefined,
+
+          hangoutPlaces: params.hangoutPlaces
+            ? {
+              deleteMany: {},
+              create: params.hangoutPlaces.map((p) => ({
+                placeName: p.placeName,
+                placeType: p.placeType,
+                latitude: p.latitude,
+                longitude: p.longitude,
+                address: p.address,
+              })),
+            }
+            : undefined,
         },
         select: {
           id: true,
           name: true,
           email: true,
           username: true,
+          bio: true,
           dateOfBirth: true,
           image: true,
-          bio: true,
-          mood: true,
-          reasons: true,
-          location: true,
+          vibes: true,
+          tokens: true,
+          coordinates: true,
+          joinReasons: true,
+          interests: true,
+          hangoutPlaces: true,
           isVerified: true,
           createdAt: true,
-        }
+          onboardingCompleted: true,
+        },
       });
-
-      // 4. Optional: Send welcome email or notification
-      // await EmailService.sendWelcomeEmail(verifiedUser.email);
 
       return verifiedUser;
     } catch (error) {
       console.error('Update user error:', error);
-      console.error('Error saving refresh token:', error);
-      throw new AppError(500, "Failed to save refresh token", 500);
+      throw new AppError(500, "Failed to update user", 500);
     }
   }
 
@@ -351,12 +396,6 @@ class UserService {
             latitude: true,
             longitude: true,
             city: true,
-            district: true,
-            province: true,
-            country: true,
-            postalCode: true,
-            accuracy: true,
-            source: true,
             updatedAt: true,
             createdAt: true,
           }
@@ -370,18 +409,10 @@ class UserService {
             latitude: true,
             longitude: true,
             address: true,
-            city: true,
-            district: true,
-            googlePlaceId: true,
-            googleRating: true,
-            photoReference: true,
-            isPrimary: true,
-            visitFrequency: true,
             createdAt: true,
             updatedAt: true,
           },
           orderBy: [
-            { isPrimary: 'desc' },
             { createdAt: 'desc' }
           ]
         },
@@ -421,20 +452,10 @@ class UserService {
                 description: true,
                 date: true,
                 endDate: true,
-                banner: true,
-                eventType: true,
                 capacity: true,
                 price: true,
                 isActive: true,
-
-                // Event vibes
-                vibes: {
-                  select: {
-                    vibe: true
-                  }
-                },
-
-                // Event place
+                banner: true,
                 place: {
                   select: {
                     id: true,
@@ -480,27 +501,6 @@ class UserService {
           }
         },
 
-        interests: {
-          select: {
-            createdAt: true,
-            interest: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                category: true,
-                icon: true,
-                order: true,
-              }
-            }
-          },
-          orderBy: {
-            interest: {
-              order: 'asc'
-            }
-          }
-        },
-
         matchesAsUser1: {
           select: {
             matchScore: true,
@@ -516,7 +516,6 @@ class UserService {
                 coordinates: {
                   select: {
                     city: true,
-                    district: true,
                   }
                 }
               }
@@ -543,7 +542,6 @@ class UserService {
                 coordinates: {
                   select: {
                     city: true,
-                    district: true,
                   }
                 }
               }
@@ -576,20 +574,8 @@ class UserService {
                 coordinates: {
                   select: {
                     city: true,
-                    district: true,
                   }
                 },
-                interests: {
-                  select: {
-                    interest: {
-                      select: {
-                        name: true,
-                        icon: true,
-                      }
-                    }
-                  },
-                  take: 5
-                }
               }
             }
           },
@@ -657,13 +643,6 @@ class UserService {
                 city: true,
                 district: true,
                 rating: true,
-                priceRange: true,
-                openingHours: true,
-                vibes: {
-                  select: {
-                    vibe: true
-                  }
-                }
               }
             }
           },
@@ -696,14 +675,8 @@ class UserService {
                 date: true,
                 endDate: true,
                 banner: true,
-                eventType: true,
                 capacity: true,
                 price: true,
-                vibes: {
-                  select: {
-                    vibe: true
-                  }
-                },
                 place: {
                   select: {
                     name: true,
@@ -733,7 +706,6 @@ class UserService {
             hangoutPlaces: true,
             communities: true,
             events: true,
-            interests: true,
             matchesGiven: true,
             matchesReceived: true,
             placeRecommendations: true,

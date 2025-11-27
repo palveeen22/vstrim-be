@@ -2,7 +2,8 @@ import express from "express";
 import authRoutes from "./auth-routes";
 import userRoutes from "./user-routes";
 import quizRoutes from "./daily-quiz-routes";
-import { authenticate } from "../middlewares/index";
+import dataRoutes from "./data-routes";
+// import { authenticate } from "../middlewares/index";
 
 // Import other route files as needed
 
@@ -21,12 +22,13 @@ router.use("/api", authRoutes);
 
 router.use("/api", userRoutes);
 
-// Register all routes
+router.use("/api", dataRoutes);
+
 router.use("/api", quizRoutes);
 
 
-// Apply authentication middleware to all routes below this point
-router.use("/api", authenticate);
+// // Apply authentication middleware to all routes below this point
+// router.use("/api", authenticate);
 
 
 export default router;

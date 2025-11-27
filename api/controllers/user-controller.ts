@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import UserService, { CreateUserParams } from "../services/user-service";
-import { generateToken, generateRefreshToken } from "../../libs/jwt";
+import { generateToken, generateRefreshToken, verifyRefreshToken } from "../../libs/jwt";
 import AppError from "../../libs/app-error";
+import RedisClient from "../../libs/redis-client";
 
 class UserController {
 
@@ -89,9 +90,14 @@ class UserController {
 
       return res.status(200).json({
         status: "success",
+        // data: {
+        //   user: userWithoutPassword,
+        //   token: accessToken,
+        // },
         data: {
           user: userWithoutPassword,
-          token: accessToken,
+          accessToken,
+          refreshToken,
         },
         message: "User authenticated successfully"
       });
@@ -107,7 +113,7 @@ class UserController {
 
   static async createUser(req: Request, res: Response): Promise<Response> {
     try {
-      const { name, email, password } = req.body;
+      const { email, password } = req.body;
 
       // Validate required fields
       if (!email) {
@@ -123,14 +129,6 @@ class UserController {
           status: "error",
           data: null,
           message: "Password is required"
-        });
-      }
-
-      if (!name) {
-        return res.status(400).json({
-          status: "error",
-          data: null,
-          message: "Name is required"
         });
       }
 
@@ -168,7 +166,6 @@ class UserController {
       const createParams: CreateUserParams = {
         email,
         password,
-        name,
         isVerified: false
       };
 
@@ -184,7 +181,7 @@ class UserController {
         status: "success",
         data: {
           user: newUser,
-          token: accessToken,
+          accessToken,
           refreshToken,
           requiresProfileSetup: !newUser.onboardingCompleted
         },
@@ -349,70 +346,68 @@ class UserController {
     }
   }
 
-  static async verifyAccount(req: Request, res: Response): Promise<Response> {
+  static async completeProfileSetup(req: Request, res: Response): Promise<Response> {
     try {
       const { id } = req.params;
       const {
         name,
         username,
         bio,
-        location,
-        mood,
-        reasons,
+        coordinates,
+        vibes,
+        joinReasons,
+        interests,
         dateOfBirth,
         image,
+        hangoutPlaces,
       } = req.body;
 
-      // Validate user ID
       if (!id) {
         return res.status(400).json({
           status: "error",
           data: null,
-          message: "User ID is required"
+          message: "User ID is required",
         });
       }
 
-      // Parse dateOfBirth if provided
+      // Parse dateOfBirth jika ada
       const parsedDateOfBirth = dateOfBirth ? new Date(dateOfBirth) : undefined;
 
-      // Validate date is not in the future
       if (parsedDateOfBirth && parsedDateOfBirth > new Date()) {
         return res.status(400).json({
           status: "error",
           data: null,
-          message: "Date of birth cannot be in the future"
+          message: "Date of birth cannot be in the future",
         });
       }
 
       // Update user profile
-      const updatedUser = await UserService.verifyUser(id, {
+      const updatedUser = await UserService.completeProfileUser(id, {
         name,
         username,
         bio,
-        location,
-        mood,
-        reasons,
-        dateOfBirth: parsedDateOfBirth,
+        coordinates,
+        vibes,
+        joinReasons,
+        interests,
+        hangoutPlaces,
+        // dateOfBirth: parsedDateOfBirth,
         image,
-        isVerified: true
       });
 
       if (!updatedUser) {
         return res.status(404).json({
           status: "error",
           data: null,
-          message: "User not found"
+          message: "User not found",
         });
       }
 
       return res.status(200).json({
         status: "success",
-        data: {
-          updatedUser
-        },
-        message: "Profile updated successfully"
+        data: updatedUser,
+        message: "Profile updated successfully",
       });
-
     } catch (error) {
       console.error('Update profile error:', error);
 
@@ -420,17 +415,18 @@ class UserController {
         return res.status(error.statusCode).json({
           status: "error",
           data: null,
-          message: error.message
+          message: error.message,
         });
       }
 
       return res.status(500).json({
         status: "error",
         data: null,
-        message: error instanceof Error ? error.message : "An unexpected error occurred"
+        message: error instanceof Error ? error.message : "An unexpected error occurred",
       });
     }
   }
+
 
   static async getProfile(req: Request, res: Response): Promise<Response> {
     try {
@@ -472,6 +468,40 @@ class UserController {
       });
     }
   }
+
+  static async refreshToken(req: Request, res: Response): Promise<Response> {
+    try {
+      const { refreshToken } = req.body;
+
+      if (!refreshToken) {
+        return res.status(400).json({ message: "Refresh token required" });
+      }
+
+      const redisClient = await RedisClient.getInstance();
+      const keys = await redisClient.keys(`refresh_token:*:${refreshToken.slice(-8)}`);
+
+      if (keys.length === 0) {
+        return res.status(403).json({ message: "Invalid refresh token" });
+      }
+
+      // Dapatkan data user dari token
+      const decoded = verifyRefreshToken(refreshToken);
+      const newAccessToken = generateToken(decoded.id);
+
+      return res.status(200).json({
+        status: "success",
+        data: { accessToken: newAccessToken }
+      });
+
+    } catch (err) {
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to refresh token"
+      });
+    }
+  }
+
+
 }
 
 export default UserController;
