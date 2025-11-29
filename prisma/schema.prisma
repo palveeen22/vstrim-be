@@ -8,33 +8,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model User {
-  id       String  @id @default(cuid())
-  name     String?
-  email    String  @unique
-  password String
-  username String? @unique
+  id                    String             @id @default(cuid())
+  name                  String?
+  email                 String             @unique
+  password              String
+  username              String?            @unique
+  bio                   String?
+  dateOfBirth           DateTime?
+  photoProfile          String?
+  photoVerification     String?
+  tokens                Float?             @default(0)
+  isVerified            Boolean            @default(false) @map("is_verified")
+  verificationCompleted Boolean            @default(false) @map("onboarding_completed")
+  coordinates           UserCoordinates?
+  hangoutPlaces         UserHangoutPlace[]
 
-  bio         String?
-  dateOfBirth DateTime?
-  image       String?
-  tokens      Float?     @default(0)
-  vibes       VibeType[] @default([]) @map("vibes")
+  vibes       VibeType[]         @map("vibes")
+  joinReasons JoinReason[]       @map("join_reasons")
+  interests   InterestCategory[] @map("user_interest")
 
-  joinReasons JoinReason[] @default([]) @map("join_reasons")
-
-  interests InterestCategory[] @default([]) @map("user_interest")
-
-  isVerified          Boolean @default(false) @map("is_verified")
-  onboardingCompleted Boolean @default(false) @map("onboarding_completed")
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  dailyQuizzes DailyQuiz[] @relation("UserDailyQuizzes")
-
-  coordinates          UserCoordinates?
-  hangoutPlaces        UserHangoutPlace[]
+  dailyQuizzes         DailyQuiz[]           @relation("UserDailyQuizzes")
   communities          UserCommunity[]
   events               UserEvent[]
   matchesAsUser1       UserMatch[]           @relation("User1Matches")
@@ -43,6 +37,8 @@ model User {
   matchesReceived      Match[]               @relation("MatchedUserMatches")
   placeRecommendations PlaceRecommendation[]
   eventRecommendations EventRecommendation[]
+
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@map("users")
 }
@@ -75,7 +71,9 @@ model UserHangoutPlace {
 
   latitude  Float
   longitude Float
-  address   String?
+  city      String?
+  district  String?
+  address   String
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -92,6 +90,7 @@ model Place {
   id      String    @id @default(cuid())
   name    String
   address String
+  icon    String?
   type    PlaceType
 
   latitude  Float
@@ -125,6 +124,8 @@ model Event {
   name        String
   description String?
   date        DateTime
+  icon        String?
+  image       String?
   endDate     DateTime?
   placeId     String
   communityId String?
@@ -143,10 +144,13 @@ model Event {
 }
 
 model Community {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  createdAt   DateTime @default(now()) @map("created_at")
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  icon          String?
+  image         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  communityType String?
 
   users  UserCommunity[]
   events Event[]
@@ -155,9 +159,12 @@ model Community {
 }
 
 model Promo {
-  id           String   @id @default(cuid())
-  placeId      String   @map("place_id")
-  title        String
+  id          String  @id @default(cuid())
+  placeId     String  @map("place_id")
+  title       String
+  description String?
+  image       String?
+
   discountCode String   @map("discount_code")
   validUntil   DateTime @map("valid_until")
   createdAt    DateTime @default(now()) @map("created_at")
@@ -254,7 +261,7 @@ model PlaceRecommendation {
   distance      Float
   breakdown     Json
 
-  reason    String
+  reason    String?
   isViewed  Boolean @default(false) @map("is_viewed")
   isVisited Boolean @default(false) @map("is_visited")
 
@@ -280,7 +287,7 @@ model EventRecommendation {
   distance      Float
   breakdown     Json
 
-  reason       String
+  reason       String?
   isViewed     Boolean @default(false) @map("is_viewed")
   isInterested Boolean @default(false) @map("is_interested")
 

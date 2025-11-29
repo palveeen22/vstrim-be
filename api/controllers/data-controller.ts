@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { DataService } from "../services/data-service";
 
 export class DataController {
-  static async fetchAll(req: Request, res: Response): Promise<Response> {
+  static async fetchAll(_req: Request, res: Response): Promise<Response> {
     try {
       const data = await DataService.findAll();
 

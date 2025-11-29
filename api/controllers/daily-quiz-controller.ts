@@ -75,11 +75,9 @@ static async submitQuiz(req: Request, res: Response): Promise<Response> {
 
       console.log(answers, "<<><> RAW ANSWERS");
 
-      // ✅ Check if answers is already an array (from your frontend)
       let answersArray: SubmitQuizAnswer[];
 
       if (Array.isArray(answers)) {
-        // Frontend sent array format - use it directly!
         answersArray = answers.map(answer => ({
           questionId: answer.questionId,
           selectedOptions: Array.isArray(answer.selectedOptions)
@@ -141,89 +139,6 @@ static async submitQuiz(req: Request, res: Response): Promise<Response> {
       });
     }
   }
-
-
-  /**
-   * ✅ Get quiz history
-   */
-  static async getQuizHistory(req: Request, res: Response): Promise<Response> {
-    try {
-      const userId = req.user?.id;
-
-      if (!userId) {
-        return res.status(401).json({
-          status: 'error',
-          data: null,
-          message: 'Unauthorized'
-        });
-      }
-
-      const limit = parseInt(req.query.limit as string) || 10;
-
-      const history = await DailyQuizService.getUserQuizHistory(userId, limit);
-
-      return res.status(200).json({
-        status: 'success',
-        data: {
-          history,
-          total: history.length
-        },
-        message: 'Quiz history retrieved successfully'
-      });
-
-    } catch (error) {
-      console.error('Get quiz history error:', error);
-
-      return res.status(500).json({
-        status: 'error',
-        data: null,
-        message: 'Failed to retrieve quiz history'
-      });
-    }
-  }
-
-  /**
-   * ✅ Get latest quiz answers (for matching algorithm)
-   */
-  static async getLatestAnswers(req: Request, res: Response): Promise<Response> {
-    try {
-      const userId = req.user?.id;
-
-      if (!userId) {
-        return res.status(401).json({
-          status: 'error',
-          data: null,
-          message: 'Unauthorized'
-        });
-      }
-
-      const latestAnswers = await DailyQuizService.getUserLatestAnswers(userId);
-
-      if (!latestAnswers) {
-        return res.status(404).json({
-          status: 'error',
-          data: null,
-          message: 'No quiz answers found. Please complete a quiz first.'
-        });
-      }
-
-      return res.status(200).json({
-        status: 'success',
-        data: latestAnswers,
-        message: 'Latest quiz answers retrieved successfully'
-      });
-
-    } catch (error) {
-      console.error('Get latest answers error:', error);
-
-      return res.status(500).json({
-        status: 'error',
-        data: null,
-        message: 'Failed to retrieve quiz answers'
-      });
-    }
-  }
-
 
   static async forceRefresh(res: Response): Promise<Response> {
     try {

@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "users" ALTER COLUMN "vibes" DROP DEFAULT,
+ALTER COLUMN "join_reasons" DROP DEFAULT,
+ALTER COLUMN "user_interest" DROP DEFAULT;

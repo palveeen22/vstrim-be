@@ -10,7 +10,7 @@ import dataRoutes from "./data-routes";
 const router = express.Router();
 
 // Root route
-router.get("/api", (req, res) => {
+router.get("/api", (_req, res) => {
   res.json({
     message: "Welcome to Vstrim API",
     version: "1.0.0"

@@ -8,20 +8,13 @@ interface Option {
   label: string;
   icon: string | null;
 }
-
-// interface SubmitQuizAnswer {
-//   questionId: string;
-//   selectedOptions: (string | { id: string })[];
-// }
-
-// shared/types/quiz.types.ts
 export interface SubmitQuizAnswer {
-  questionId: string; // Real DB ID
-  selectedOptions: string[]; // Array of option IDs
+  questionId: string;
+  selectedOptions: string[];
 }
 
 export interface SubmitQuizRequest {
-  answers: SubmitQuizAnswer[]; // Always an array
+  answers: SubmitQuizAnswer[];
 }
 
 interface Question {
@@ -154,7 +147,7 @@ class DailyQuizService {
       );
     }
 
-    // ✅ OPTION 1: Use Prisma ORM (Recommended - Type Safe)
+    // OPTION 1: Use Prisma ORM (Recommended - Type Safe)
     // Get all question IDs, shuffle, and take N
     const allQuestions = await prisma.quizQuestion.findMany({
       select: { id: true }
@@ -229,20 +222,6 @@ class DailyQuizService {
 
     return response;
   }
-
-  // static async getTodayQuiz(): Promise<DailyQuiz | null> {
-  //   const quiz = await prisma.dailyQuiz.findFirst({
-  //     where: {
-  //       date: today,
-  //       isActive: true,
-  //     },
-  //   });
-
-  //   return quiz;
-  // }
-
-
-  // DailyQuizService.ts
 
   // DailyQuizService.ts
   static async submitQuiz(
@@ -387,49 +366,6 @@ class DailyQuizService {
   }
 
 
-
-  static async getUserLatestAnswers(userId: string) {
-    const latestSession = await prisma.quizSession.findFirst({
-      where: {
-        userId,
-        completedAt: { not: null }
-      },
-      orderBy: {
-        completedAt: 'desc'
-      },
-      include: {
-        answers: {
-          include: {
-            question: {
-              select: {
-                id: true,
-                title: true,
-                category: true,
-                weight: true
-              }
-            },
-            selectedOptions: {
-              select: {
-                id: true,
-                label: true,
-                value: true,
-                vibes: true
-              }
-            }
-          }
-        },
-        quiz: {
-          select: {
-            date: true,
-            title: true
-          }
-        }
-      }
-    });
-
-    return latestSession;
-  }
-
   static async checkTodayCompletion(userId: string): Promise<QuizCompletionStatus> {
     try {
       const today = new Date();
@@ -481,74 +417,7 @@ class DailyQuizService {
     }
   }
 
-  static async hasCompletedToday(userId: string): Promise<boolean> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const todayQuiz = await prisma.dailyQuiz.findFirst({
-      where: {
-        date: today,
-        isActive: true
-      }
-    });
-
-    if (!todayQuiz) {
-      return false;
-    }
-
-    const session = await prisma.quizSession.findUnique({
-      where: {
-        userId_quizId: {
-          userId,
-          quizId: todayQuiz.id
-        }
-      },
-      select: {
-        completedAt: true
-      }
-    });
-
-    return session?.completedAt !== null;
-  }
-
-  // static async getUserQuizHistory(userId: string, limit: number = 10) {
-  //   return await prisma.quizSession.findMany({
-  //     where: {
-  //       userId,
-  //       completedAt: { not: null }
-  //     },
-  //     orderBy: {
-  //       completedAt: 'desc'
-  //     },
-  //     take: limit,
-  //     select: {
-  //       id: true,
-  //       completedAt: true,
-  //       quiz: {
-  //         select: {
-  //           date: true,
-  //           title: true
-  //         }
-  //       },
-  //       answers: {
-  //         select: {
-  //           question: {
-  //             select: {
-  //               title: true
-  //             }
-  //           },
-  //           selectedOptions: {
-  //             select: {
-  //               label: true
-  //             }
-  //           }
-  //         }
-  //       }
-  //     }
-  //   });
-  // }
-
-
+  
   static async forceRefresh(): Promise<DailyQuizResponse> {
     await this.refreshCache();
     return this.getDailyQuiz();

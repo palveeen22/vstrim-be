@@ -114,7 +114,7 @@ export const authenticate = async (
         email: true,
         name: true,
         username: true,
-        image: true,
+        photoProfile: true,
         bio: true,
         // location: true,
       },
@@ -133,7 +133,7 @@ export const authenticate = async (
     req.user = {
       id: user.id,
       email: user.email,
-      name: user.name,
+      name: user.name || '',
       username: user.username,
     };
 
@@ -191,7 +191,7 @@ export const optionalAuthenticate = async (
           req.user = {
             id: user.id,
             email: user.email,
-            name: user.name,
+            name: user.name || '',
             username: user.username,
           };
         }

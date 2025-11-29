@@ -1,8 +1,9 @@
-import { InterestCategory, JoinReason, Prisma, User, UserCoordinates, UserHangoutPlace, VibeType } from '@prisma/client';
+import { InterestCategory, JoinReason, Prisma, VibeType } from '@prisma/client';
 import prisma from '../../prisma'
 import AppError from "../../libs/app-error";
 import * as bcrypt from 'bcrypt';
 import RedisClient from '../../libs/redis-client';
+import { TUser, TUserUpdate } from '@/libs/type';
 
 export interface CreateUserParams {
   email: string;
@@ -37,18 +38,19 @@ export interface ProfileSetupParams {
   }>;
 }
 
-export interface UpdateUserParams {
-  name?: string;
-  username?: string;
-  bio?: string;
-  dateOfBirth?: Date;
-  image?: string;
-  vibes?: VibeType[];
-  coordinates?: UserCoordinates;
-  joinReasons?: JoinReason[];
-  interests?: InterestCategory[];
-  hangoutPlaces?: UserHangoutPlace[];
-}
+
+const prismaJoinReasonMap: Record<string, JoinReason> = {
+  make_friends: JoinReason.MAKE_FRIENDS,
+  find_activity_partners: JoinReason.FIND_ACTIVITY_PARTNERS,
+  explore_city: JoinReason.EXPLORE_CITY,
+  try_new_experiences: JoinReason.TRY_NEW_EXPERIENCES,
+  professional_networking: JoinReason.PROFESSIONAL_NETWORKING,
+  dating_relationships: JoinReason.DATING_RELATIONSHIPS,
+  new_to_area: JoinReason.NEW_TO_AREA,
+  expand_social_circle: JoinReason.EXPAND_SOCIAL_CIRCLE,
+  find_hobby_community: JoinReason.FIND_HOBBY_COMMUNITY,
+  attend_events: JoinReason.ATTEND_EVENTS,
+};
 
 class UserService {
 
@@ -83,7 +85,7 @@ class UserService {
           coordinates: true,
           hangoutPlaces: true,
           communities: {
-            include:{
+            include: {
               community: true
             }
           },
@@ -160,7 +162,7 @@ class UserService {
       email: params.email,
       password: hashedPassword,
       isVerified: params.isVerified ?? false,
-      onboardingCompleted: false
+      verificationCompleted: false
     };
 
     // Create user
@@ -173,10 +175,10 @@ class UserService {
         username: true,
         bio: true,
         dateOfBirth: true,
-        image: true,
+        photoProfile: true,
         joinReasons: true,
         isVerified: true,
-        onboardingCompleted: true,
+        verificationCompleted: true,
         createdAt: true,
       }
     });
@@ -186,7 +188,7 @@ class UserService {
 
   static async updateUser(
     userId: string,
-    params: UpdateUserParams
+    params: TUserUpdate
   ): Promise<any> {
     try {
       // Check if user exists
@@ -205,13 +207,12 @@ class UserService {
       if (params.username !== undefined) updateData.username = params.username;
       if (params.bio !== undefined) updateData.bio = params.bio;
       if (params.dateOfBirth !== undefined) updateData.dateOfBirth = params.dateOfBirth;
-      if (params.image !== undefined) updateData.image = params.image;
+      if (params.photoProfile !== undefined) updateData.photoProfile = params.photoProfile;
       if (params.joinReasons !== undefined) {
-        // ✅ Validate join reasons length (1-3)
         if (params.joinReasons.length < 1 || params.joinReasons.length > 3) {
           throw new AppError(400, "Join reasons must be between 1-3 items", 400);
         }
-        updateData.joinReasons = params.joinReasons;
+        updateData.joinReasons = params.joinReasons.map(j => prismaJoinReasonMap[j]);
       }
 
       // Update user
@@ -225,10 +226,10 @@ class UserService {
           username: true,
           bio: true,
           dateOfBirth: true,
-          image: true,
-          joinReasons: true, // ✅ Include in response
+          photoProfile: true,
+          joinReasons: true,
           isVerified: true,
-          onboardingCompleted: true, // ✅ Include in response
+          verificationCompleted: true,
           createdAt: true,
         }
       });
@@ -280,89 +281,109 @@ class UserService {
     }
   }
 
-  static async completeProfileUser(
-    userId: string,
-    params: UpdateUserParams
-  ): Promise<Omit<User, 'password'> | null> {
-    try {
-      // 1. Check if user exists
-      const existingUser = await prisma.user.findUnique({
-        where: { id: userId },
-      });
+static async completeProfileUser(
+  userId: string,
+  params: TUserUpdate
+): Promise<Omit<TUser, 'password'> | null> {
+  try {
+    const verifiedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: params.name,
+        username: params.username,
+        bio: params.bio,
+        dateOfBirth: params.dateOfBirth,
+        photoProfile: params.photoProfile,
+        verificationCompleted: true,
 
-      if (!existingUser) {
+        vibes: params.vibes ? {
+          set: params.vibes as VibeType[]
+        } : undefined,
+        
+        joinReasons: params.joinReasons ? {
+          set: params.joinReasons.map(j => 
+            JoinReason[j.toUpperCase() as keyof typeof JoinReason]
+          )
+        } : undefined,
+        
+        interests: params.interests ? {
+          set: params.interests as InterestCategory[]
+        } : undefined,
+
+        coordinates: params.coordinates ? {
+          upsert: {
+            create: params.coordinates,
+            update: params.coordinates,
+          },
+        } : undefined,
+
+        hangoutPlaces: params.hangoutPlaces ? {
+          deleteMany: {},
+          create: params.hangoutPlaces.map((p) => ({
+            placeName: p.placeName,
+            placeType: p.placeType,
+            latitude: p.latitude,
+            longitude: p.longitude,
+            address: p.address,
+          })),
+        } : undefined,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        username: true,
+        bio: true,
+        dateOfBirth: true,
+        photoProfile: true,
+        vibes: true,
+        tokens: true,
+        coordinates: true,
+        joinReasons: true,
+        interests: true,
+        hangoutPlaces: true,
+        isVerified: true,
+        createdAt: true,
+        verificationCompleted: true,
+      },
+    });
+
+    // Transform: null → undefined untuk match TUser interface
+    return {
+      id: verifiedUser.id,
+      email: verifiedUser.email,
+      isVerified: verifiedUser.isVerified,
+      verificationCompleted: verifiedUser.verificationCompleted,
+      createdAt: verifiedUser.createdAt,
+      
+      // Optional fields: convert null to undefined
+      name: verifiedUser.name ?? undefined,
+      username: verifiedUser.username ?? undefined,
+      bio: verifiedUser.bio ?? undefined,
+      dateOfBirth: verifiedUser.dateOfBirth ?? undefined,
+      photoProfile: verifiedUser.photoProfile ?? undefined,
+      tokens: verifiedUser.tokens ?? undefined,
+      
+      // Relations (already arrays, so safe)
+      vibes: verifiedUser.vibes as VibeType[] | undefined,
+      interests: verifiedUser.interests as InterestCategory[] | undefined,
+
+      joinReasons: verifiedUser.joinReasons as JoinReason[] | undefined,
+      // coordinates: verifiedUser.coordinates ?? undefined,
+      // hangoutPlaces: verifiedUser.hangoutPlaces ?? undefined,
+    };
+
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2025') {
         throw new AppError(404, "User not found", 404);
       }
-
-      // 2. Update user with verification data
-      const verifiedUser = await prisma.user.update({
-        where: { id: userId },
-        data: {
-          name: params.name,
-          username: params.username,
-          bio: params.bio,
-          dateOfBirth: params.dateOfBirth,
-          image: params.image,
-          onboardingCompleted: true,
-
-          vibes: params.vibes ? {
-            set: params.vibes as VibeType[]
-          } : undefined,
-          joinReasons: params.joinReasons ? {
-            set: params.joinReasons as JoinReason[]
-          } : undefined,
-          interests: params.interests ? {
-            set: params.interests as InterestCategory[]
-          } : undefined,
-
-          coordinates: params.coordinates
-            ? {
-              upsert: {
-                create: params.coordinates,
-                update: params.coordinates,
-              },
-            }
-            : undefined,
-
-          hangoutPlaces: params.hangoutPlaces
-            ? {
-              deleteMany: {},
-              create: params.hangoutPlaces.map((p) => ({
-                placeName: p.placeName,
-                placeType: p.placeType,
-                latitude: p.latitude,
-                longitude: p.longitude,
-                address: p.address,
-              })),
-            }
-            : undefined,
-        },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          username: true,
-          bio: true,
-          dateOfBirth: true,
-          image: true,
-          vibes: true,
-          tokens: true,
-          coordinates: true,
-          joinReasons: true,
-          interests: true,
-          hangoutPlaces: true,
-          isVerified: true,
-          createdAt: true,
-          onboardingCompleted: true,
-        },
-      });
-
-      return verifiedUser;
-    } catch (error) {
-      console.error('Update user error:', error);
-      throw new AppError(500, "Failed to update user", 500);
     }
+    
+    console.error('Update user error:', error);
+    throw new AppError(500, "Failed to update user", 500);
   }
+}
 
   static async findUserProfile(identifier?: string) {
     if (!identifier) return null;
@@ -381,13 +402,13 @@ class UserService {
         username: true,
         bio: true,
         dateOfBirth: true,
-        image: true,
+        photoProfile: true,
         vibes: true,
         joinReasons: true,
 
         // Account status
         isVerified: true,
-        onboardingCompleted: true,
+        verificationCompleted: true,
         createdAt: true,
 
         coordinates: {
@@ -510,7 +531,7 @@ class UserService {
                 id: true,
                 name: true,
                 username: true,
-                image: true,
+                photoProfile: true,
                 bio: true,
                 vibes: true,
                 coordinates: {
@@ -536,7 +557,7 @@ class UserService {
                 id: true,
                 name: true,
                 username: true,
-                image: true,
+                photoProfile: true,
                 bio: true,
                 vibes: true,
                 coordinates: {
@@ -568,7 +589,7 @@ class UserService {
                 id: true,
                 name: true,
                 username: true,
-                image: true,
+                photoProfile: true,
                 bio: true,
                 vibes: true,
                 coordinates: {
@@ -605,7 +626,7 @@ class UserService {
                 id: true,
                 name: true,
                 username: true,
-                image: true,
+                photoProfile: true,
                 bio: true,
                 vibes: true,
               }

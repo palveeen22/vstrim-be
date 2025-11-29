@@ -6,7 +6,7 @@ import RedisClient from "../../libs/redis-client";
 
 class UserController {
 
-  static async fetchAllUsers(req: Request, res: Response): Promise<Response> {
+  static async fetchAllUsers(_req: Request, res: Response): Promise<Response> {
     try {
       const users = await UserService.findAllUsers();
 
@@ -248,7 +248,7 @@ class UserController {
         username,
         bio,
         dateOfBirth: parsedDateOfBirth,
-        image,
+        photoProfile: image,
       });
 
       if (!updatedUser) {
@@ -358,7 +358,7 @@ class UserController {
         joinReasons,
         interests,
         dateOfBirth,
-        image,
+        // image, //maybe later !!!!
         hangoutPlaces,
       } = req.body;
 
@@ -391,8 +391,6 @@ class UserController {
         joinReasons,
         interests,
         hangoutPlaces,
-        // dateOfBirth: parsedDateOfBirth,
-        image,
       });
 
       if (!updatedUser) {

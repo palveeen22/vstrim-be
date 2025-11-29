@@ -12,12 +12,6 @@ router.get('/daily-quiz/completion', authenticate, DailyQuizController.checkComp
 // ✅ Submit quiz answers
 router.post('/daily-quiz/submit', authenticate, DailyQuizController.submitQuiz);
 
-// Get quiz history
-router.get('/daily-quiz/history', authenticate, DailyQuizController.getQuizHistory);
-
-// Get latest answers
-router.get('/daily-quiz/latest', authenticate, DailyQuizController.getLatestAnswers);
-
 // Force refresh (admin only)
 router.post('/daily-quiz/refresh', authenticate, DailyQuizController.forceRefresh);
 
