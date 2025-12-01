@@ -109,6 +109,10 @@ export interface Event {
   vibes: string[];
   capacity?: number;
   price?: number;
+  latitude: number;
+  longitude: number;
+  city?: string;
+  district?: string;
   isActive: boolean;
   createdAt: Date;
   place: Place;
@@ -121,6 +125,10 @@ export interface Community {
   id: string;
   name: string;
   description?: string;
+  latitude: number;
+  longitude: number;
+  city?: string;
+  district?: string;
   icon?: string;
   image?: string;
   createdAt: Date;

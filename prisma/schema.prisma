@@ -127,9 +127,17 @@ model Event {
   icon        String?
   image       String?
   endDate     DateTime?
-  placeId     String
-  communityId String?
   banner      String?
+
+  // Relasi opsional
+  placeId     String?   // sekarang bisa null, artinya Event bisa tanpa Place
+  communityId String?   // tetap opsional
+
+  // Koordinat sendiri jika tidak ada Place
+  latitude  Float?
+  longitude Float?
+  city      String?
+  district  String?
 
   vibes     String[]
   capacity  Int?
@@ -137,11 +145,13 @@ model Event {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  place                Place                 @relation(fields: [placeId], references: [id], onDelete: Cascade)
-  community            Community?            @relation(fields: [communityId], references: [id], onDelete: SetNull)
-  users                UserEvent[]
+  // Relasi
+  place     Place?      @relation(fields: [placeId], references: [id], onDelete: SetNull)
+  community Community?  @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  users     UserEvent[]
   eventRecommendations EventRecommendation[]
 }
+
 
 model Community {
   id            String   @id @default(cuid())
@@ -152,11 +162,18 @@ model Community {
   createdAt     DateTime @default(now()) @map("created_at")
   communityType String?
 
+  // Koordinat opsional untuk komunitas
+  latitude  Float?
+  longitude Float?
+  city      String?
+  district  String?
+
   users  UserCommunity[]
   events Event[]
 
   @@map("communities")
 }
+
 
 model Promo {
   id          String  @id @default(cuid())
